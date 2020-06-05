@@ -80,6 +80,7 @@ include = [
 # A list of items to not include in the generated bindings
 # default: []
 exclude = [
+	"AppProto",
     "AppLayerDecoderEvents",
     "AppLayerParserState",
     "CLuaState",

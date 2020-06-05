@@ -20,7 +20,7 @@
 use crate::ikev2::ipsec_parser::*;
 use crate::ikev2::state::IKEV2ConnectionState;
 use crate::core;
-use crate::core::{AppProto,Flow,ALPROTO_UNKNOWN,ALPROTO_FAILED,STREAM_TOSERVER,STREAM_TOCLIENT};
+use crate::core::{AppProto,Flow,STREAM_TOSERVER,STREAM_TOCLIENT};
 use crate::applayer::{self, *};
 use std;
 use std::ffi::{CStr,CString};
@@ -663,7 +663,7 @@ pub extern "C" fn rs_ikev2_state_get_event_info(event_name: *const std::os::raw:
 }
 
 
-static mut ALPROTO_IKEV2 : AppProto = ALPROTO_UNKNOWN;
+static mut ALPROTO_IKEV2 : AppProto = AppProto::ALPROTO_UNKNOWN;
 
 #[no_mangle]
 pub extern "C" fn rs_ikev2_probing_parser(_flow: *const Flow,
@@ -672,30 +672,30 @@ pub extern "C" fn rs_ikev2_probing_parser(_flow: *const Flow,
         _rdir: *mut u8) -> AppProto
 {
     let slice = build_slice!(input,input_len as usize);
-    let alproto = unsafe{ ALPROTO_IKEV2 };
+    let alproto = AppProto::ALPROTO_IKEV2;
     match parse_ikev2_header(slice) {
         Ok((_, ref hdr)) => {
             if hdr.maj_ver != 2 || hdr.min_ver != 0 {
                 SCLogDebug!("ipsec_probe: could be ipsec, but with unsupported/invalid version {}.{}",
                         hdr.maj_ver, hdr.min_ver);
-                return unsafe{ALPROTO_FAILED};
+                return AppProto::ALPROTO_FAILED;
             }
             if hdr.exch_type.0 < 34 || hdr.exch_type.0 > 37 {
                 SCLogDebug!("ipsec_probe: could be ipsec, but with unsupported/invalid exchange type {}",
                        hdr.exch_type.0);
-                return unsafe{ALPROTO_FAILED};
+                return AppProto::ALPROTO_FAILED;
             }
             if hdr.length as usize != slice.len() {
                 SCLogDebug!("ipsec_probe: could be ipsec, but length does not match");
-                return unsafe{ALPROTO_FAILED};
+                return AppProto::ALPROTO_FAILED;
             }
             return alproto;
         },
         Err(nom::Err::Incomplete(_)) => {
-            return ALPROTO_UNKNOWN;
+            return AppProto::ALPROTO_UNKNOWN;
         },
         Err(_) => {
-            return unsafe{ALPROTO_FAILED};
+            return AppProto::ALPROTO_FAILED;
         },
     }
 }

@@ -23,7 +23,7 @@ use std::mem::transmute;
 
 use crate::log::*;
 use crate::applayer::*;
-use crate::core::{self, AppProto, ALPROTO_UNKNOWN, IPPROTO_UDP, IPPROTO_TCP};
+use crate::core::{self, AppProto, IPPROTO_UDP, IPPROTO_TCP};
 use crate::dns::parser;
 
 use nom::IResult;
@@ -126,7 +126,7 @@ pub const DNS_RCODE_BADTRUNC: u16 = 22;
 /// gets logged.
 const MAX_TRANSACTIONS: usize = 32;
 
-static mut ALPROTO_DNS: AppProto = ALPROTO_UNKNOWN;
+static mut ALPROTO_DNS: AppProto = AppProto::ALPROTO_UNKNOWN;
 
 #[repr(u32)]
 pub enum DNSEvent {
@@ -933,7 +933,7 @@ pub extern "C" fn rs_dns_probe(
     rdir: *mut u8,
 ) -> AppProto {
     if len == 0 || len < std::mem::size_of::<DNSHeader>() as u32 {
-        return core::ALPROTO_UNKNOWN;
+        return AppProto::ALPROTO_UNKNOWN;
     }
     let slice: &[u8] = unsafe {
         std::slice::from_raw_parts(input as *mut u8, len as usize)
@@ -947,10 +947,10 @@ pub extern "C" fn rs_dns_probe(
         };
         unsafe {
             *rdir = dir;
-            return ALPROTO_DNS;
         }
+        return AppProto::ALPROTO_DNS;
     }
-    return 0;
+    return AppProto::ALPROTO_UNKNOWN;
 }
 
 #[no_mangle]
@@ -962,7 +962,7 @@ pub extern "C" fn rs_dns_probe_tcp(
     rdir: *mut u8
 ) -> AppProto {
     if len == 0 || len < std::mem::size_of::<DNSHeader>() as u32 + 2 {
-        return core::ALPROTO_UNKNOWN;
+        return AppProto::ALPROTO_UNKNOWN;
     }
     let slice: &[u8] = unsafe {
         std::slice::from_raw_parts(input as *mut u8, len as usize)
@@ -978,9 +978,9 @@ pub extern "C" fn rs_dns_probe_tcp(
         if direction & (core::STREAM_TOSERVER|core::STREAM_TOCLIENT) != dir {
             unsafe { *rdir = dir };
         }
-        return unsafe { ALPROTO_DNS };
+        return AppProto::ALPROTO_DNS;
     }
-    return 0;
+    return AppProto::ALPROTO_UNKNOWN;
 }
 
 #[no_mangle]

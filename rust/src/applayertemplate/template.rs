@@ -16,7 +16,7 @@
  */
 
 use std;
-use crate::core::{self, ALPROTO_UNKNOWN, AppProto, Flow, IPPROTO_TCP};
+use crate::core::{self, AppProto, Flow, IPPROTO_TCP};
 use crate::log::*;
 use std::mem::transmute;
 use crate::applayer::{self, *};
@@ -24,7 +24,7 @@ use std::ffi::CString;
 use nom;
 use super::parser;
 
-static mut ALPROTO_TEMPLATE: AppProto = ALPROTO_UNKNOWN;
+static mut ALPROTO_TEMPLATE: AppProto = AppProto::ALPROTO_UNKNOWN;
 
 pub struct TemplateTransaction {
     tx_id: u64,
@@ -264,10 +264,10 @@ pub extern "C" fn rs_template_probing_parser(
     if input_len > 1 && input != std::ptr::null_mut() {
         let slice = build_slice!(input, input_len as usize);
         if probe(slice) {
-            return unsafe { ALPROTO_TEMPLATE };
+            return AppProto::ALPROTO_TEMPLATE;
         }
     }
-    return ALPROTO_UNKNOWN;
+    return AppProto::ALPROTO_UNKNOWN;
 }
 
 #[no_mangle]

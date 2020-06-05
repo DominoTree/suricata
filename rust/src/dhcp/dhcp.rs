@@ -17,7 +17,7 @@
 
 use crate::applayer::{self, *};
 use crate::core;
-use crate::core::{ALPROTO_UNKNOWN, AppProto, Flow, IPPROTO_UDP};
+use crate::core::{AppProto, Flow, IPPROTO_UDP};
 use crate::core::{sc_detect_engine_state_free, sc_app_layer_decoder_events_free_events};
 use crate::dhcp::parser::*;
 use crate::log::*;
@@ -25,7 +25,7 @@ use std;
 use std::ffi::{CStr,CString};
 use std::mem::transmute;
 
-static mut ALPROTO_DHCP: AppProto = ALPROTO_UNKNOWN;
+static mut ALPROTO_DHCP: AppProto = AppProto::ALPROTO_UNKNOWN;
 
 static DHCP_MIN_FRAME_LEN: u32 = 232;
 
@@ -233,16 +233,16 @@ pub extern "C" fn rs_dhcp_probing_parser(_flow: *const Flow,
                                          _rdir: *mut u8) -> AppProto
 {
     if input_len < DHCP_MIN_FRAME_LEN {
-        return ALPROTO_UNKNOWN;
+        return AppProto::ALPROTO_UNKNOWN;
     }
 
     let slice = build_slice!(input, input_len as usize);
     match parse_header(slice) {
         Ok((_, _)) => {
-            return unsafe { ALPROTO_DHCP };
+            return AppProto::ALPROTO_DHCP;
         }
         _ => {
-            return ALPROTO_UNKNOWN;
+            return AppProto::ALPROTO_UNKNOWN;
         }
     }
 }

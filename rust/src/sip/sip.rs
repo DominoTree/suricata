@@ -21,7 +21,7 @@ extern crate nom;
 
 use crate::applayer::{self, *};
 use crate::core;
-use crate::core::{sc_detect_engine_state_free, AppProto, Flow, ALPROTO_UNKNOWN};
+use crate::core::{sc_detect_engine_state_free, AppProto, Flow};
 use crate::log::*;
 use crate::sip::parser::*;
 use std;
@@ -315,7 +315,7 @@ pub extern "C" fn rs_sip_state_get_event_info_by_id(
     }
 }
 
-static mut ALPROTO_SIP: AppProto = ALPROTO_UNKNOWN;
+static mut ALPROTO_SIP: AppProto = AppProto::ALPROTO_UNKNOWN;
 
 #[no_mangle]
 pub extern "C" fn rs_sip_probing_parser_ts(
@@ -327,9 +327,9 @@ pub extern "C" fn rs_sip_probing_parser_ts(
 ) -> AppProto {
     let buf = build_slice!(input, input_len as usize);
     if sip_parse_request(buf).is_ok() {
-        return unsafe { ALPROTO_SIP };
+        return AppProto::ALPROTO_SIP;
     }
-    return ALPROTO_UNKNOWN;
+    return AppProto::ALPROTO_UNKNOWN;
 }
 
 #[no_mangle]
@@ -342,9 +342,9 @@ pub extern "C" fn rs_sip_probing_parser_tc(
 ) -> AppProto {
     let buf = build_slice!(input, input_len as usize);
     if sip_parse_response(buf).is_ok() {
-        return unsafe { ALPROTO_SIP };
+        return AppProto::ALPROTO_SIP;
     }
-    return ALPROTO_UNKNOWN;
+    return AppProto::ALPROTO_UNKNOWN;
 }
 
 #[no_mangle]

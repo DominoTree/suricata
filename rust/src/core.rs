@@ -39,11 +39,48 @@ pub const STREAM_GAP:      u8 = 0x10;
 pub const STREAM_DEPTH:    u8 = 0x20;
 pub const STREAM_MIDSTREAM:u8 = 0x40;
 
-// Application layer protocol identifiers (app-layer-protos.h)
-pub type AppProto = std::os::raw::c_int;
+#[derive(Clone,Copy)]
+#[repr(C)]
+pub enum AppProto {
+    ALPROTO_UNKNOWN = 0,
+    ALPROTO_HTTP,
+    ALPROTO_FTP,
+    ALPROTO_SMTP,
+    ALPROTO_TLS, /* SSLv2, SSLv3 & TLSv1 */
+    ALPROTO_SSH,
+    ALPROTO_IMAP,
+    ALPROTO_JABBER,
+    ALPROTO_SMB,
+    ALPROTO_DCERPC,
+    ALPROTO_IRC,
 
-pub const ALPROTO_UNKNOWN : AppProto = 0;
-pub static mut ALPROTO_FAILED : AppProto = 0; // updated during init
+    ALPROTO_DNS,
+    ALPROTO_MODBUS,
+    ALPROTO_ENIP,
+    ALPROTO_DNP3,
+    ALPROTO_NFS,
+    ALPROTO_NTP,
+    ALPROTO_FTPDATA,
+    ALPROTO_TFTP,
+    ALPROTO_IKEV2,
+    ALPROTO_KRB5,
+    ALPROTO_DHCP,
+    ALPROTO_SNMP,
+    ALPROTO_SIP,
+    ALPROTO_RFB,
+    ALPROTO_TEMPLATE,
+    ALPROTO_TEMPLATE_RUST,
+    ALPROTO_RDP,
+
+    /* used by the probing parser when alproto detection fails
+     * permanently for that particular stream */
+    ALPROTO_FAILED,
+
+    ALPROTO_MAX
+}
+
+pub const ALPROTO_UNKNOWN : AppProto = AppProto::ALPROTO_UNKNOWN;
+pub static mut ALPROTO_FAILED : AppProto = AppProto::ALPROTO_UNKNOWN; // updated during init
 
 pub const IPPROTO_TCP : i32 = 6;
 pub const IPPROTO_UDP : i32 = 17;

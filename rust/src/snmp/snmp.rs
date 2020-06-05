@@ -19,7 +19,7 @@
 
 use crate::snmp::snmp_parser::*;
 use crate::core;
-use crate::core::{AppProto,Flow,ALPROTO_UNKNOWN,ALPROTO_FAILED,STREAM_TOSERVER,STREAM_TOCLIENT};
+use crate::core::{AppProto,Flow,STREAM_TOSERVER,STREAM_TOCLIENT};
 use crate::applayer::{self, *};
 use std;
 use std::ffi::{CStr,CString};
@@ -531,7 +531,7 @@ pub extern "C" fn rs_snmp_get_tx_iterator(_ipproto: u8,
 
 
 
-static mut ALPROTO_SNMP : AppProto = ALPROTO_UNKNOWN;
+static mut ALPROTO_SNMP : AppProto = AppProto::ALPROTO_UNKNOWN;
 
 // Read PDU sequence and extract version, if similar to SNMP definition
 fn parse_pdu_enveloppe_version(i:&[u8]) -> IResult<&[u8],u32> {
@@ -566,12 +566,12 @@ pub extern "C" fn rs_snmp_probing_parser(_flow: *const Flow,
                                          input_len: u32,
                                          _rdir: *mut u8) -> AppProto {
     let slice = build_slice!(input,input_len as usize);
-    let alproto = unsafe{ ALPROTO_SNMP };
-    if slice.len() < 4 { return unsafe{ALPROTO_FAILED}; }
+    let alproto = AppProto::ALPROTO_SNMP;
+    if slice.len() < 4 { return AppProto::ALPROTO_FAILED; }
     match parse_pdu_enveloppe_version(slice) {
         Ok((_,_))                    => alproto,
-        Err(nom::Err::Incomplete(_)) => ALPROTO_UNKNOWN,
-        _                            => unsafe{ALPROTO_FAILED},
+        Err(nom::Err::Incomplete(_)) => AppProto::ALPROTO_UNKNOWN,
+        _                            => AppProto::ALPROTO_FAILED,
     }
 }
 
