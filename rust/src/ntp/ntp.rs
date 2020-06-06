@@ -381,7 +381,7 @@ pub extern "C" fn ntp_probing_parser(_flow: *const Flow,
         _rdir: *mut u8) -> AppProto
 {
     let slice: &[u8] = unsafe { std::slice::from_raw_parts(input as *mut u8, input_len as usize) };
-    let alproto = AppProto::ALPROTO_NTP;
+    let alproto = ALPROTO_NTP;
     match parse_ntp(slice) {
         Ok((_, ref msg)) => {
             if msg.version == 3 || msg.version == 4 {

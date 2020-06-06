@@ -566,7 +566,7 @@ pub extern "C" fn rs_snmp_probing_parser(_flow: *const Flow,
                                          input_len: u32,
                                          _rdir: *mut u8) -> AppProto {
     let slice = build_slice!(input,input_len as usize);
-    let alproto = AppProto::ALPROTO_SNMP;
+    let alproto = ALPROTO_SNMP;
     if slice.len() < 4 { return AppProto::ALPROTO_FAILED; }
     match parse_pdu_enveloppe_version(slice) {
         Ok((_,_))                    => alproto,

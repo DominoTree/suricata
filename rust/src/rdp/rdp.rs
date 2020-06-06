@@ -436,7 +436,7 @@ pub extern "C" fn rs_rdp_probe_ts_tc(
         // https://wiki.wireshark.org/SampleCaptures?action=AttachFile&do=view&target=rdp-ssl.pcap.gz
         // but this callback will not be exercised, so `probe_tls_handshake` not needed here.
         if probe_rdp(slice) {
-            return AppProto::ALPROTO_RDP;
+            return ALPROTO_RDP;
         }
     }
     return AppProto::ALPROTO_UNKNOWN;

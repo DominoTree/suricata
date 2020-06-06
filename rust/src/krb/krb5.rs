@@ -439,7 +439,7 @@ pub extern "C" fn rs_krb5_probing_parser(_flow: *const Flow,
         _rdir: *mut u8) -> AppProto
 {
     let slice = build_slice!(input,input_len as usize);
-    let alproto = AppProto::ALPROTO_KRB5;
+    let alproto = ALPROTO_KRB5;
     if slice.len() <= 10 { return AppProto::ALPROTO_FAILED; }
     match der_read_element_header(slice) {
         Ok((rem, ref hdr)) => {

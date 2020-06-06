@@ -327,7 +327,7 @@ pub extern "C" fn rs_sip_probing_parser_ts(
 ) -> AppProto {
     let buf = build_slice!(input, input_len as usize);
     if sip_parse_request(buf).is_ok() {
-        return AppProto::ALPROTO_SIP;
+        return ALPROTO_SIP;
     }
     return AppProto::ALPROTO_UNKNOWN;
 }
@@ -342,7 +342,7 @@ pub extern "C" fn rs_sip_probing_parser_tc(
 ) -> AppProto {
     let buf = build_slice!(input, input_len as usize);
     if sip_parse_response(buf).is_ok() {
-        return AppProto::ALPROTO_SIP;
+        return ALPROTO_SIP;
     }
     return AppProto::ALPROTO_UNKNOWN;
 }

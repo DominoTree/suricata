@@ -672,7 +672,7 @@ pub extern "C" fn rs_ikev2_probing_parser(_flow: *const Flow,
         _rdir: *mut u8) -> AppProto
 {
     let slice = build_slice!(input,input_len as usize);
-    let alproto = AppProto::ALPROTO_IKEV2;
+    let alproto = ALPROTO_IKEV2;
     match parse_ikev2_header(slice) {
         Ok((_, ref hdr)) => {
             if hdr.maj_ver != 2 || hdr.min_ver != 0 {

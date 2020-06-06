@@ -23,7 +23,7 @@ use crate::dhcp::parser::*;
 use crate::log::*;
 use std;
 use std::ffi::{CStr,CString};
-use std::mem::transmute;
+use std::mem::transmute; 
 
 static mut ALPROTO_DHCP: AppProto = AppProto::ALPROTO_UNKNOWN;
 
@@ -239,7 +239,7 @@ pub extern "C" fn rs_dhcp_probing_parser(_flow: *const Flow,
     let slice = build_slice!(input, input_len as usize);
     match parse_header(slice) {
         Ok((_, _)) => {
-            return AppProto::ALPROTO_DHCP;
+            return ALPROTO_DHCP;
         }
         _ => {
             return AppProto::ALPROTO_UNKNOWN;

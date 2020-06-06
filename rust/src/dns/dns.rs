@@ -948,7 +948,7 @@ pub extern "C" fn rs_dns_probe(
         unsafe {
             *rdir = dir;
         }
-        return AppProto::ALPROTO_DNS;
+        return ALPROTO_DNS;
     }
     return AppProto::ALPROTO_UNKNOWN;
 }
@@ -978,7 +978,7 @@ pub extern "C" fn rs_dns_probe_tcp(
         if direction & (core::STREAM_TOSERVER|core::STREAM_TOCLIENT) != dir {
             unsafe { *rdir = dir };
         }
-        return AppProto::ALPROTO_DNS;
+        return ALPROTO_DNS;
     }
     return AppProto::ALPROTO_UNKNOWN;
 }
