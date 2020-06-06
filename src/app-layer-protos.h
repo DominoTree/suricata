@@ -25,51 +25,7 @@
 #ifndef __APP_LAYER_PROTOS_H__
 #define __APP_LAYER_PROTOS_H__
 
-enum AppProtoEnum {
-    ALPROTO_UNKNOWN = 0,
-    ALPROTO_HTTP,
-    ALPROTO_FTP,
-    ALPROTO_SMTP,
-    ALPROTO_TLS, /* SSLv2, SSLv3 & TLSv1 */
-    ALPROTO_SSH,
-    ALPROTO_IMAP,
-    ALPROTO_JABBER,
-    ALPROTO_SMB,
-    ALPROTO_DCERPC,
-    ALPROTO_IRC,
-
-    ALPROTO_DNS,
-    ALPROTO_MODBUS,
-    ALPROTO_ENIP,
-    ALPROTO_DNP3,
-    ALPROTO_NFS,
-    ALPROTO_NTP,
-    ALPROTO_FTPDATA,
-    ALPROTO_TFTP,
-    ALPROTO_IKEV2,
-    ALPROTO_KRB5,
-    ALPROTO_DHCP,
-    ALPROTO_SNMP,
-    ALPROTO_SIP,
-    ALPROTO_RFB,
-    ALPROTO_TEMPLATE,
-    ALPROTO_TEMPLATE_RUST,
-    ALPROTO_RDP,
-
-    /* used by the probing parser when alproto detection fails
-     * permanently for that particular stream */
-    ALPROTO_FAILED,
-#ifdef UNITTESTS
-    ALPROTO_TEST,
-#endif /* UNITESTS */
-    /* keep last */
-    ALPROTO_MAX,
-};
-// NOTE: if ALPROTO's get >= 256, update SignatureNonPrefilterStore
-
 /* not using the enum as that is a unsigned int, so 4 bytes */
-typedef uint16_t AppProto;
-
 static inline bool AppProtoIsValid(AppProto a)
 {
     return ((a > ALPROTO_UNKNOWN && a < ALPROTO_FAILED));

@@ -40,7 +40,7 @@ pub const STREAM_DEPTH:    u8 = 0x20;
 pub const STREAM_MIDSTREAM:u8 = 0x40;
 
 #[derive(Clone,Copy)]
-#[repr(C)]
+#[repr(u16)]
 pub enum AppProto {
     ALPROTO_UNKNOWN = 0,
     ALPROTO_HTTP,
@@ -76,6 +76,10 @@ pub enum AppProto {
      * permanently for that particular stream */
     ALPROTO_FAILED,
 
+    /* UNITESTS */
+    ALPROTO_TEST,
+
+    /* keep last */
     ALPROTO_MAX
 }
 
