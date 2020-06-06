@@ -53,6 +53,8 @@
 
 #include "app-layer-events.h"
 
+#include "rust-bindings.h"
+
 #define DETECT_MAX_RULE_SIZE 8192
 
 #define DETECT_TRANSFORMS_MAX 16

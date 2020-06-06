@@ -33,6 +33,7 @@
 #include "decode-events.h"
 #include "flow-worker.h"
 
+
 #ifdef HAVE_NAPATECH
 #include "util-napatech.h"
 #endif /* HAVE_NAPATECH */
@@ -95,6 +96,7 @@ enum PktSrcEnum {
 
 #include "detect-reference.h"
 
+#include "rust-bindings.h"
 #include "app-layer-protos.h"
 
 /* forward declarations */
