@@ -20,14 +20,19 @@
 use std;
 use std::ffi::CString;
 use std::mem::transmute;
-use crate::core::{self, ALPROTO_UNKNOWN, AppProto, Flow, IPPROTO_TCP};
+use std::sync::Mutex;
+use crate::core::{self, AppProto, Flow, IPPROTO_TCP};
 use crate::log::*;
 use crate::applayer;
 use crate::applayer::*;
 use nom;
 use super::parser;
 
-static mut ALPROTO_RFB: AppProto = ALPROTO_UNKNOWN;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref ALPROTO_RFB: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 pub struct RFBTransaction {
     tx_id: u64,
@@ -736,7 +741,7 @@ pub unsafe extern "C" fn rs_rfb_register_parser() {
     ) != 0
     {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
-        ALPROTO_RFB = alproto;
+        *ALPROTO_RFB.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(
             ip_proto_str.as_ptr(),
             parser.name,

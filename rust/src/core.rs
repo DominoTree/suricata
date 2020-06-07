@@ -18,7 +18,10 @@
 // This file exposes items from the core "C" code to Rust.
 
 use std;
+use std::sync::Mutex;
 use crate::filecontainer::*;
+
+use lazy_static::lazy_static;
 
 /// Opaque C types.
 pub enum DetectEngineState {}
@@ -84,7 +87,10 @@ pub enum AppProto {
 }
 
 pub const ALPROTO_UNKNOWN : AppProto = AppProto::ALPROTO_UNKNOWN;
-pub static mut ALPROTO_FAILED : AppProto = AppProto::ALPROTO_UNKNOWN; // updated during init
+
+lazy_static! {
+    static ref ALPROTO_FAILED: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 pub const IPPROTO_TCP : i32 = 6;
 pub const IPPROTO_UDP : i32 = 17;
@@ -193,7 +199,7 @@ pub extern "C" fn rs_init(context: &'static mut SuricataContext)
 {
     unsafe {
         SC = Some(context);
-        ALPROTO_FAILED = StringToAppProto("failed\0".as_ptr());
+        *ALPROTO_FAILED.lock().unwrap() = StringToAppProto("failed\0".as_ptr());
     }
 }
 

@@ -24,7 +24,12 @@ use std::ffi::CString;
 use nom;
 use super::parser;
 
-static mut ALPROTO_TEMPLATE: AppProto = AppProto::ALPROTO_UNKNOWN;
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref ALPROTO_TEMPLATE: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 pub struct TemplateTransaction {
     tx_id: u64,
@@ -264,7 +269,7 @@ pub extern "C" fn rs_template_probing_parser(
     if input_len > 1 && input != std::ptr::null_mut() {
         let slice = build_slice!(input, input_len as usize);
         if probe(slice) {
-            return AppProto::ALPROTO_TEMPLATE;
+            return *ALPROTO_TEMPLATE.lock().unwrap();
         }
     }
     return AppProto::ALPROTO_UNKNOWN;
@@ -549,7 +554,7 @@ pub unsafe extern "C" fn rs_template_register_parser() {
     ) != 0
     {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
-        ALPROTO_TEMPLATE = alproto;
+        *ALPROTO_TEMPLATE.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(
             ip_proto_str.as_ptr(),
             parser.name,

@@ -18,12 +18,17 @@
 use super::parser;
 use crate::applayer::*;
 use crate::core::STREAM_TOSERVER;
-use crate::core::{self, AppProto, Flow, ALPROTO_UNKNOWN, IPPROTO_TCP};
+use crate::core::{self, AppProto, Flow, IPPROTO_TCP};
 use crate::log::*;
 use std::ffi::{CStr, CString};
 use std::mem::transmute;
+use std::sync::Mutex;
 
-static mut ALPROTO_SSH: AppProto = ALPROTO_UNKNOWN;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref ALPROTO_SSH: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 #[repr(u32)]
 pub enum SSHEvent {
@@ -530,7 +535,7 @@ pub unsafe extern "C" fn rs_ssh_register_parser() {
 
     if AppLayerProtoDetectConfProtoDetectionEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
-        ALPROTO_SSH = alproto;
+        *ALPROTO_SSH.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }
