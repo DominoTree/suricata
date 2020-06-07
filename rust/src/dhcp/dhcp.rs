@@ -23,9 +23,14 @@ use crate::dhcp::parser::*;
 use crate::log::*;
 use std;
 use std::ffi::{CStr,CString};
-use std::mem::transmute; 
+use std::sync::Mutex;
+use std::mem::transmute;
 
-static mut ALPROTO_DHCP: AppProto = AppProto::ALPROTO_UNKNOWN;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref ALPROTO_DHCP: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 static DHCP_MIN_FRAME_LEN: u32 = 232;
 
@@ -239,7 +244,7 @@ pub extern "C" fn rs_dhcp_probing_parser(_flow: *const Flow,
     let slice = build_slice!(input, input_len as usize);
     match parse_header(slice) {
         Ok((_, _)) => {
-            return ALPROTO_DHCP;
+            return *ALPROTO_DHCP.lock().unwrap();
         }
         _ => {
             return AppProto::ALPROTO_UNKNOWN;
@@ -459,7 +464,7 @@ pub unsafe extern "C" fn rs_dhcp_register_parser() {
 
     if AppLayerProtoDetectConfProtoDetectionEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
-        ALPROTO_DHCP = alproto;
+        *ALPROTO_DHCP.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }

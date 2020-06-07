@@ -20,11 +20,14 @@ extern crate nom;
 use std;
 use std::ffi::CString;
 use std::mem::transmute;
+use std::sync::Mutex;
 
 use crate::log::*;
 use crate::applayer::*;
 use crate::core::{self, AppProto, IPPROTO_UDP, IPPROTO_TCP};
 use crate::dns::parser;
+
+use lazy_static::lazy_static;
 
 use nom::IResult;
 use nom::number::streaming::be_u16;
@@ -126,7 +129,9 @@ pub const DNS_RCODE_BADTRUNC: u16 = 22;
 /// gets logged.
 const MAX_TRANSACTIONS: usize = 32;
 
-static mut ALPROTO_DNS: AppProto = AppProto::ALPROTO_UNKNOWN;
+lazy_static! {
+    static ref ALPROTO_DNS: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 #[repr(u32)]
 pub enum DNSEvent {
@@ -948,7 +953,7 @@ pub extern "C" fn rs_dns_probe(
         unsafe {
             *rdir = dir;
         }
-        return ALPROTO_DNS;
+        return *ALPROTO_DNS.lock().unwrap();
     }
     return AppProto::ALPROTO_UNKNOWN;
 }
@@ -978,14 +983,14 @@ pub extern "C" fn rs_dns_probe_tcp(
         if direction & (core::STREAM_TOSERVER|core::STREAM_TOCLIENT) != dir {
             unsafe { *rdir = dir };
         }
-        return ALPROTO_DNS;
+        return *ALPROTO_DNS.lock().unwrap();
     }
     return AppProto::ALPROTO_UNKNOWN;
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn rs_dns_init(proto: AppProto) {
-    ALPROTO_DNS = proto;
+    *ALPROTO_DNS.lock().unwrap() = proto;
 }
 
 #[no_mangle]
@@ -1028,7 +1033,7 @@ pub unsafe extern "C" fn rs_dns_udp_register_parser() {
     let ip_proto_str = CString::new("udp").unwrap();
     if AppLayerProtoDetectConfProtoDetectionEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
-        ALPROTO_DNS = alproto;
+        *ALPROTO_DNS.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }
@@ -1075,11 +1080,11 @@ pub unsafe extern "C" fn rs_dns_tcp_register_parser() {
     let ip_proto_str = CString::new("tcp").unwrap();
     if AppLayerProtoDetectConfProtoDetectionEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
-        ALPROTO_DNS = alproto;
+        *ALPROTO_DNS.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }
-        AppLayerParserRegisterOptionFlags(IPPROTO_TCP as u8, ALPROTO_DNS,
+        AppLayerParserRegisterOptionFlags(IPPROTO_TCP as u8, *ALPROTO_DNS.lock().unwrap(),
             crate::applayer::APP_LAYER_PARSER_OPT_ACCEPT_GAPS);
     }
 }

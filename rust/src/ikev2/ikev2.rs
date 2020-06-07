@@ -24,8 +24,11 @@ use crate::core::{AppProto,Flow,STREAM_TOSERVER,STREAM_TOCLIENT};
 use crate::applayer::{self, *};
 use std;
 use std::ffi::{CStr,CString};
+use std::sync::Mutex;
 
 use crate::log::*;
+
+use lazy_static::lazy_static;
 
 use nom;
 
@@ -663,7 +666,9 @@ pub extern "C" fn rs_ikev2_state_get_event_info(event_name: *const std::os::raw:
 }
 
 
-static mut ALPROTO_IKEV2 : AppProto = AppProto::ALPROTO_UNKNOWN;
+lazy_static! {
+    static ref ALPROTO_IKEV2: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 #[no_mangle]
 pub extern "C" fn rs_ikev2_probing_parser(_flow: *const Flow,
@@ -672,7 +677,7 @@ pub extern "C" fn rs_ikev2_probing_parser(_flow: *const Flow,
         _rdir: *mut u8) -> AppProto
 {
     let slice = build_slice!(input,input_len as usize);
-    let alproto = ALPROTO_IKEV2;
+    let alproto = *ALPROTO_IKEV2.lock().unwrap();
     match parse_ikev2_header(slice) {
         Ok((_, ref hdr)) => {
             if hdr.maj_ver != 2 || hdr.min_ver != 0 {
@@ -743,7 +748,7 @@ pub unsafe extern "C" fn rs_register_ikev2_parser() {
     if AppLayerProtoDetectConfProtoDetectionEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
         // store the allocated ID for the probe function
-        ALPROTO_IKEV2 = alproto;
+        *ALPROTO_IKEV2.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }

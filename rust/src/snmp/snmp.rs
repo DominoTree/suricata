@@ -24,6 +24,7 @@ use crate::applayer::{self, *};
 use std;
 use std::ffi::{CStr,CString};
 use std::mem::transmute;
+use std::sync::Mutex;
 
 use crate::log::*;
 
@@ -33,6 +34,8 @@ use der_parser::oid::Oid;
 use nom;
 use nom::IResult;
 use nom::error::ErrorKind;
+
+use lazy_static::lazy_static;
 
 #[repr(u32)]
 pub enum SNMPEvent {
@@ -529,9 +532,9 @@ pub extern "C" fn rs_snmp_get_tx_iterator(_ipproto: u8,
     }
 }
 
-
-
-static mut ALPROTO_SNMP : AppProto = AppProto::ALPROTO_UNKNOWN;
+lazy_static! {
+    static ref ALPROTO_SNMP: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 // Read PDU sequence and extract version, if similar to SNMP definition
 fn parse_pdu_enveloppe_version(i:&[u8]) -> IResult<&[u8],u32> {
@@ -566,7 +569,7 @@ pub extern "C" fn rs_snmp_probing_parser(_flow: *const Flow,
                                          input_len: u32,
                                          _rdir: *mut u8) -> AppProto {
     let slice = build_slice!(input,input_len as usize);
-    let alproto = ALPROTO_SNMP;
+    let alproto = *ALPROTO_SNMP.lock().unwrap();
     if slice.len() < 4 { return AppProto::ALPROTO_FAILED; }
     match parse_pdu_enveloppe_version(slice) {
         Ok((_,_))                    => alproto,
@@ -621,7 +624,7 @@ pub unsafe extern "C" fn rs_register_snmp_parser() {
         // port 161
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
         // store the allocated ID for the probe function
-        ALPROTO_SNMP = alproto;
+        *ALPROTO_SNMP.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }

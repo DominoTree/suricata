@@ -19,6 +19,7 @@
 
 use std;
 use std::ffi::{CStr,CString};
+use std::sync::Mutex;
 use nom;
 use nom::IResult;
 use nom::number::streaming::be_u32;
@@ -28,6 +29,8 @@ use kerberos_parser::krb5::{EncryptionType,ErrorCode,MessageType,PrincipalName,R
 use crate::applayer::{self, *};
 use crate::core;
 use crate::core::{Flow,AppProto,STREAM_TOCLIENT,STREAM_TOSERVER,sc_detect_engine_state_free};
+
+use lazy_static::lazy_static;
 
 use crate::log::*;
 
@@ -430,7 +433,9 @@ pub extern "C" fn rs_krb5_state_get_event_info(event_name: *const std::os::raw::
     0
 }
 
-static mut ALPROTO_KRB5 : AppProto = AppProto::ALPROTO_UNKNOWN;
+lazy_static! {
+    static ref ALPROTO_KRB5: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 #[no_mangle]
 pub extern "C" fn rs_krb5_probing_parser(_flow: *const Flow,
@@ -439,7 +444,7 @@ pub extern "C" fn rs_krb5_probing_parser(_flow: *const Flow,
         _rdir: *mut u8) -> AppProto
 {
     let slice = build_slice!(input,input_len as usize);
-    let alproto = ALPROTO_KRB5;
+    let alproto = *ALPROTO_KRB5.lock().unwrap();
     if slice.len() <= 10 { return AppProto::ALPROTO_FAILED; }
     match der_read_element_header(slice) {
         Ok((rem, ref hdr)) => {
@@ -690,7 +695,7 @@ pub unsafe extern "C" fn rs_register_krb5_parser() {
     if AppLayerProtoDetectConfProtoDetectionEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
         // store the allocated ID for the probe function
-        ALPROTO_KRB5 = alproto;
+        *ALPROTO_KRB5.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }
@@ -707,7 +712,7 @@ pub unsafe extern "C" fn rs_register_krb5_parser() {
     if AppLayerProtoDetectConfProtoDetectionEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
         // store the allocated ID for the probe function
-        ALPROTO_KRB5 = alproto;
+        *ALPROTO_KRB5.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }

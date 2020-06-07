@@ -26,6 +26,9 @@ use crate::log::*;
 use crate::sip::parser::*;
 use std;
 use std::ffi::{CStr, CString};
+use std::sync::Mutex;
+
+use lazy_static::lazy_static;
 
 #[repr(u32)]
 pub enum SIPEvent {
@@ -315,7 +318,9 @@ pub extern "C" fn rs_sip_state_get_event_info_by_id(
     }
 }
 
-static mut ALPROTO_SIP: AppProto = AppProto::ALPROTO_UNKNOWN;
+lazy_static! {
+    static ref ALPROTO_SIP: Mutex<AppProto> = Mutex::new(AppProto::ALPROTO_UNKNOWN);
+}
 
 #[no_mangle]
 pub extern "C" fn rs_sip_probing_parser_ts(
@@ -327,7 +332,7 @@ pub extern "C" fn rs_sip_probing_parser_ts(
 ) -> AppProto {
     let buf = build_slice!(input, input_len as usize);
     if sip_parse_request(buf).is_ok() {
-        return ALPROTO_SIP;
+        return *ALPROTO_SIP.lock().unwrap();
     }
     return AppProto::ALPROTO_UNKNOWN;
 }
@@ -342,7 +347,7 @@ pub extern "C" fn rs_sip_probing_parser_tc(
 ) -> AppProto {
     let buf = build_slice!(input, input_len as usize);
     if sip_parse_response(buf).is_ok() {
-        return ALPROTO_SIP;
+        return *ALPROTO_SIP.lock().unwrap();
     }
     return AppProto::ALPROTO_UNKNOWN;
 }
@@ -419,7 +424,7 @@ pub unsafe extern "C" fn rs_sip_register_parser() {
     let ip_proto_str = CString::new("udp").unwrap();
     if AppLayerProtoDetectConfProtoDetectionEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
         let alproto = AppLayerRegisterProtocolDetection(&parser, 1);
-        ALPROTO_SIP = alproto;
+        *ALPROTO_SIP.lock().unwrap() = alproto;
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }
