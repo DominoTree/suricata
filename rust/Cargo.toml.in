@@ -18,6 +18,7 @@ debug = []
 debug-validate = []
 
 [dependencies]
+lazy_static = "1.4"
 nom = "5.0"
 bitflags = "1.0"
 byteorder = "1.3"
