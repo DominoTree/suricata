@@ -65,12 +65,6 @@ void DetectBsizeRegister(void)
 #define DETECT_BSIZE_RA 2
 #define DETECT_BSIZE_EQ 3
 
-typedef struct DetectBsizeData {
-    uint8_t mode;
-    uint64_t lo;
-    uint64_t hi;
-} DetectBsizeData;
-
 /** \brief bsize match function
  *
  *  \param ctx match ctx
@@ -294,6 +288,9 @@ static int DetectBsizeSetup (DetectEngineCtx *de_ctx, Signature *s, const char *
     sm = SigMatchAlloc();
     if (sm == NULL)
         goto error;
+    if (!DetectBsizelenValidateContent(s, list, bsz))
+        goto error;
+
     sm->type = DETECT_BSIZE;
     sm->ctx = (void *)bsz;
 
@@ -304,6 +301,28 @@ static int DetectBsizeSetup (DetectEngineCtx *de_ctx, Signature *s, const char *
 error:
     DetectBsizeFree(de_ctx, bsz);
     SCReturnInt(-1);
+}
+
+bool DetectBsizelenValidateContent(const Signature *s, int list, DetectBsizeData *bsz)//, const char **sigerror)
+{
+    const SigMatch *sm = s->init_data->smlists[list];
+    for ( ; sm != NULL;  sm = sm->next) {
+        if (sm->type != DETECT_CONTENT) {
+            continue;
+        }
+        DetectContentData *cd = (DetectContentData *)sm->ctx;
+        if (cd == NULL) {
+            continue;
+        }
+
+        if (bsz->lo && bsz->lo < cd->content_len) {
+            //*sigerror = "bsize smaller than content len";
+            SCLogError(SC_ERR_INVALID_SIGNATURE, "bsize %ld smaller "
+                    "than content len %d", bsz->lo, cd->content_len);
+            return false;
+        }
+    }
+    return true;
 }
 
 /**

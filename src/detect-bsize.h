@@ -24,7 +24,13 @@
 #ifndef __DETECT_BSIZE_H__
 #define	__DETECT_BSIZE_H__
 
-//bool DetectBsizeValidateContent(const Signature *s, int list, const char **);
+typedef struct DetectBsizeData {
+    uint8_t mode;
+    uint64_t lo;
+    uint64_t hi;
+} DetectBsizeData;
+
+bool DetectBsizelenValidateContent(const Signature *s, int list, DetectBsizeData *bsz);//, const char **);
 //void DetectBsizeApplyToContent(Signature *s, int list);
 void DetectBsizeRegister(void);
 int DetectBsizeMatch(const SigMatchCtx *ctx, const uint64_t buffer_size, bool eof);
