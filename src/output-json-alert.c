@@ -167,27 +167,30 @@ static void AlertJsonDnp3(const Flow *f, const uint64_t tx_id, JsonBuilder *js)
         DNP3Transaction *tx = AppLayerParserGetTx(IPPROTO_TCP, ALPROTO_DNP3,
             dnp3_state, tx_id);
         if (tx) {
-            json_t *dnp3js = json_object();
-            if (likely(dnp3js != NULL)) {
-                if (tx->has_request && tx->request_done) {
-                    json_t *request = JsonDNP3LogRequest(tx);
-                    if (request != NULL) {
-                        json_object_set_new(dnp3js, "request", request);
-                    }
-                }
-                if (tx->has_response && tx->response_done) {
-                    json_t *response = JsonDNP3LogResponse(tx);
-                    if (response != NULL) {
-                        json_object_set_new(dnp3js, "response", response);
-                    }
-                }
-                jb_set_jsont(js, "dnp3", dnp3js);
-                json_decref(dnp3js);
+            JsonBuilderMark mark = { 0, 0, 0 };
+            jb_get_mark(js, &mark);
+            bool logged = false;
+            jb_open_object(js, "dnp3");
+            if (tx->has_request && tx->request_done) {
+                jb_open_object(js, "request");
+                JsonDNP3LogRequest(js, tx);
+                jb_close(js);
+                logged = true;
+            }
+            if (tx->has_response && tx->response_done) {
+                jb_open_object(js, "response");
+                JsonDNP3LogResponse(js, tx);
+                jb_close(js);
+                logged = true;
+            }
+            if (logged) {
+                /* Close dnp3 object. */
+                jb_close(js);
+            } else {
+                jb_restore_mark(js, &mark);
             }
         }
     }
-
-    return;
 }
 
 static void AlertJsonDns(const Flow *f, const uint64_t tx_id, JsonBuilder *js)
@@ -409,18 +412,131 @@ static void AlertAddPayload(AlertJsonOutputCtx *json_output_ctx, JsonBuilder *js
     }
 }
 
+static void AlertAddAppLayer(const Packet *p, JsonBuilder *jb,
+        const uint64_t tx_id, const uint16_t option_flags)
+{
+    const AppProto proto = FlowGetAppProtocol(p->flow);
+    JsonBuilderMark mark = { 0, 0, 0 };
+    switch (proto) {
+        case ALPROTO_HTTP:
+            // TODO: Could result in an empty http object being logged.
+            jb_open_object(jb, "http");
+            if (EveHttpAddMetadata(p->flow, tx_id, jb)) {
+                if (option_flags & LOG_JSON_HTTP_BODY) {
+                    EveHttpLogJSONBodyPrintable(jb, p->flow, tx_id);
+                }
+                if (option_flags & LOG_JSON_HTTP_BODY_BASE64) {
+                    EveHttpLogJSONBodyBase64(jb, p->flow, tx_id);
+                }
+            }
+            jb_close(jb);
+            break;
+        case ALPROTO_TLS:
+            AlertJsonTls(p->flow, jb);
+            break;
+        case ALPROTO_SSH:
+            AlertJsonSsh(p->flow, jb);
+            break;
+        case ALPROTO_SMTP:
+            jb_get_mark(jb, &mark);
+            jb_open_object(jb, "smtp");
+            if (EveSMTPAddMetadata(p->flow, tx_id, jb)) {
+                jb_close(jb);
+            } else {
+                jb_restore_mark(jb, &mark);
+            }
+            jb_get_mark(jb, &mark);
+            jb_open_object(jb, "email");
+            if (EveEmailAddMetadata(p->flow, tx_id, jb)) {
+                jb_close(jb);
+            } else {
+                jb_restore_mark(jb, &mark);
+            }
+            break;
+        case ALPROTO_NFS:
+            /* rpc */
+            jb_get_mark(jb, &mark);
+            jb_open_object(jb, "rpc");
+            if (EveNFSAddMetadataRPC(p->flow, tx_id, jb)) {
+                jb_close(jb);
+            } else {
+                jb_restore_mark(jb, &mark);
+            }
+            /* nfs */
+            jb_get_mark(jb, &mark);
+            jb_open_object(jb, "nfs");
+            if (EveNFSAddMetadata(p->flow, tx_id, jb)) {
+                jb_close(jb);
+            } else {
+                jb_restore_mark(jb, &mark);
+            }
+            break;
+        case ALPROTO_SMB:
+            jb_get_mark(jb, &mark);
+            jb_open_object(jb, "smb");
+            if (EveSMBAddMetadata(p->flow, tx_id, jb)) {
+                jb_close(jb);
+            } else {
+                jb_restore_mark(jb, &mark);
+            }
+            break;
+        case ALPROTO_SIP:
+            JsonSIPAddMetadata(jb, p->flow, tx_id);
+            break;
+        case ALPROTO_RFB:
+            jb_get_mark(jb, &mark);
+            if (!JsonRFBAddMetadata(p->flow, tx_id, jb)) {
+                jb_restore_mark(jb, &mark);
+            }
+            break;
+        case ALPROTO_FTPDATA:
+            EveFTPDataAddMetadata(p->flow, jb);
+            break;
+        case ALPROTO_DNP3:
+            AlertJsonDnp3(p->flow, tx_id, jb);
+            break;
+        case ALPROTO_DNS:
+            AlertJsonDns(p->flow, tx_id, jb);
+            break;
+        default:
+            break;
+    }
+}
+
+static void AlertAddFiles(const Packet *p, JsonBuilder *jb, const uint64_t tx_id)
+{
+    FileContainer *ffc = AppLayerParserGetFiles(p->flow,
+            p->flowflags & FLOW_PKT_TOSERVER ? STREAM_TOSERVER:STREAM_TOCLIENT);
+    if (ffc != NULL) {
+        File *file = ffc->head;
+        bool isopen = false;
+        while (file) {
+            if (tx_id == file->txid) {
+                if (!isopen) {
+                    isopen = true;
+                    jb_open_array(jb, "fileinfo");
+                }
+                jb_start_object(jb);
+                EveFileInfo(jb, file, file->flags & FILE_STORED);
+                jb_close(jb);
+            }
+            file = file->next;
+        }
+        if (isopen) {
+            jb_close(jb);
+        }
+    }
+}
+
 static int AlertJson(ThreadVars *tv, JsonAlertLogThread *aft, const Packet *p)
 {
     MemBuffer *payload = aft->payload_buffer;
     AlertJsonOutputCtx *json_output_ctx = aft->json_output_ctx;
-    json_t *hjs = NULL;
-
-    int i;
 
     if (p->alerts.cnt == 0 && !(p->flags & PKT_HAS_TAG))
         return TM_ECODE_OK;
 
-    for (i = 0; i < p->alerts.cnt; i++) {
+    for (int i = 0; i < p->alerts.cnt; i++) {
         const PacketAlert *pa = &p->alerts.alerts[i];
         if (unlikely(pa->s == NULL)) {
             continue;
@@ -473,99 +589,15 @@ static int AlertJson(ThreadVars *tv, JsonAlertLogThread *aft, const Packet *p)
             AlertJsonTunnel(p, jb);
         }
 
-        if (json_output_ctx->flags & LOG_JSON_APP_LAYER && p->flow != NULL) {
-            const AppProto proto = FlowGetAppProtocol(p->flow);
-            JsonBuilderMark mark = { 0, 0, 0 };
-            switch (proto) {
-                case ALPROTO_HTTP:
-                    // TODO: Could result in an empty http object being logged.
-                    jb_open_object(jb, "http");
-                    if (EveHttpAddMetadata(p->flow, pa->tx_id, jb)) {
-                        if (json_output_ctx->flags & LOG_JSON_HTTP_BODY) {
-                            EveHttpLogJSONBodyPrintable(jb, p->flow, pa->tx_id);
-                        }
-                        if (json_output_ctx->flags & LOG_JSON_HTTP_BODY_BASE64) {
-                            EveHttpLogJSONBodyBase64(jb, p->flow, pa->tx_id);
-                        }
-                    }
-                    jb_close(jb);
-                    break;
-                case ALPROTO_TLS:
-                    AlertJsonTls(p->flow, jb);
-                    break;
-                case ALPROTO_SSH:
-                    AlertJsonSsh(p->flow, jb);
-                    break;
-                case ALPROTO_SMTP:
-                    jb_get_mark(jb, &mark);
-                    jb_open_object(jb, "smtp");
-                    if (EveSMTPAddMetadata(p->flow, pa->tx_id, jb)) {
-                        jb_close(jb);
-                    } else {
-                        jb_restore_mark(jb, &mark);
-                    }
-                    jb_get_mark(jb, &mark);
-                    jb_open_object(jb, "email");
-                    if (EveEmailAddMetadata(p->flow, pa->tx_id, jb)) {
-                        jb_close(jb);
-                    } else {
-                        jb_restore_mark(jb, &mark);
-                    }
-                    break;
-                case ALPROTO_NFS:
-                    /* rpc */
-                    jb_get_mark(jb, &mark);
-                    jb_open_object(jb, "rpc");
-                    if (EveNFSAddMetadataRPC(p->flow, pa->tx_id, jb)) {
-                        jb_close(jb);
-                    } else {
-                        jb_restore_mark(jb, &mark);
-                    }
-                    /* nfs */
-                    jb_get_mark(jb, &mark);
-                    jb_open_object(jb, "nfs");
-                    if (EveNFSAddMetadata(p->flow, pa->tx_id, jb)) {
-                        jb_close(jb);
-                    } else {
-                        jb_restore_mark(jb, &mark);
-                    }
-                    break;
-                case ALPROTO_SMB:
-                    hjs = JsonSMBAddMetadata(p->flow, pa->tx_id);
-                    if (hjs) {
-                        jb_set_jsont(jb, "smb", hjs);
-                        json_decref(hjs);
-                    }
-                    break;
-                case ALPROTO_SIP:
-                    JsonSIPAddMetadata(jb, p->flow, pa->tx_id);
-                    break;
-                case ALPROTO_RFB: {
-                    jb_get_mark(jb, &mark);
-                    if (!JsonRFBAddMetadata(p->flow, pa->tx_id, jb)) {
-                        jb_restore_mark(jb, &mark);
-                    }
-                    break;
-                }
-                case ALPROTO_FTPDATA:
-                    hjs = JsonFTPDataAddMetadata(p->flow);
-                    if (hjs) {
-                        jb_set_jsont(jb, "ftp-data", hjs);
-                        json_decref(hjs);
-                    }
-                    break;
-                case ALPROTO_DNP3:
-                    AlertJsonDnp3(p->flow, pa->tx_id, jb);
-                    break;
-                case ALPROTO_DNS:
-                    AlertJsonDns(p->flow, pa->tx_id, jb);
-                    break;
-                default:
-                    break;
+        if (p->flow != NULL) {
+            if (json_output_ctx->flags & LOG_JSON_APP_LAYER) {
+                AlertAddAppLayer(p, jb, pa->tx_id, json_output_ctx->flags);
             }
-        }
+            /* including fileinfo data is configured by the metadata setting */
+            if (json_output_ctx->flags & LOG_JSON_RULE_METADATA) {
+                AlertAddFiles(p, jb, pa->tx_id);
+            }
 
-        if (p->flow) {
             EveAddAppProto(p->flow, jb);
             if (json_output_ctx->flags & LOG_JSON_FLOW) {
                 jb_open_object(jb, "flow");

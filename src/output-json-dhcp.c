@@ -77,19 +77,13 @@ static int JsonDHCPLogger(ThreadVars *tv, void *thread_data,
     EveAddCommonOptions(&thread->dhcplog_ctx->cfg, p, f, js);
 
     rs_dhcp_logger_log(ctx->rs_logger, tx, js);
-    if (!jb_close(js)) {
-        goto fail;
-    }
 
+    EveAddCommonOptions(&thread->dhcplog_ctx->cfg, p, f, js);
     MemBufferReset(thread->buffer);
     OutputJsonBuilderBuffer(js, thread->dhcplog_ctx->file_ctx, &thread->buffer);
     jb_free(js);
 
     return TM_ECODE_OK;
-
-fail:
-    jb_free(js);
-    return TM_ECODE_FAILED;
 }
 
 static void OutputDHCPLogDeInitCtxSub(OutputCtx *output_ctx)

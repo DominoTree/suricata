@@ -21,6 +21,8 @@ use std;
 use std::ffi::CString;
 use std::mem::transmute;
 use std::sync::Mutex;
+use std::collections::HashMap;
+use std::collections::VecDeque;
 
 use crate::log::*;
 use crate::applayer::*;
@@ -263,11 +265,9 @@ pub struct DNSTransaction {
     pub id: u64,
     pub request: Option<DNSRequest>,
     pub response: Option<DNSResponse>,
-    detect_flags_ts: u64,
-    detect_flags_tc: u64,
-    pub logged: LoggerFlags,
     pub de_state: Option<*mut core::DetectEngineState>,
     pub events: *mut core::AppLayerDecoderEvents,
+    pub tx_data: AppLayerTxData,
 }
 
 impl DNSTransaction {
@@ -277,11 +277,9 @@ impl DNSTransaction {
             id: 0,
             request: None,
             response: None,
-            detect_flags_ts: 0,
-            detect_flags_tc: 0,
-            logged: LoggerFlags::new(),
             de_state: None,
             events: std::ptr::null_mut(),
+            tx_data: AppLayerTxData::new(),
         }
     }
 
@@ -327,6 +325,36 @@ impl Drop for DNSTransaction {
     }
 }
 
+struct ConfigTracker {
+    map: HashMap<u16, AppLayerTxConfig>,
+    queue: VecDeque<u16>,
+}
+
+impl ConfigTracker {
+    fn new() -> ConfigTracker {
+        ConfigTracker {
+            map: HashMap::new(),
+            queue: VecDeque::new(),
+        }
+    }
+
+    fn add(&mut self, id: u16, config: AppLayerTxConfig) {
+        // If at size limit, remove the oldest entry.
+        if self.queue.len() > 499 {
+            if let Some(id) = self.queue.pop_front() {
+                self.map.remove(&id);
+            }
+        }
+
+        self.map.insert(id, config);
+        self.queue.push_back(id);
+    }
+
+    fn remove(&mut self, id: &u16) -> Option<AppLayerTxConfig> {
+        self.map.remove(id)
+    }
+}
+
 pub struct DNSState {
     // Internal transaction ID.
     pub tx_id: u64,
@@ -338,6 +366,8 @@ pub struct DNSState {
 
     pub request_buffer: Vec<u8>,
     pub response_buffer: Vec<u8>,
+
+    config: Option<ConfigTracker>,
 
     gap: bool,
 }
@@ -351,6 +381,7 @@ impl DNSState {
             events: 0,
             request_buffer: Vec::new(),
             response_buffer: Vec::new(),
+            config: None,
             gap: false,
         };
     }
@@ -364,6 +395,7 @@ impl DNSState {
             events: 0,
             request_buffer: Vec::with_capacity(0xffff),
             response_buffer: Vec::with_capacity(0xffff),
+            config: None,
             gap: false,
         };
     }
@@ -488,6 +520,11 @@ impl DNSState {
                 }
 
                 let mut tx = self.new_tx();
+                if let Some(ref mut config) = &mut self.config {
+                    if let Some(config) = config.remove(&response.header.tx_id) {
+                        tx.tx_data.config = config;
+                    }
+                }
                 tx.response = Some(response);
                 self.transactions.push(tx);
                 return true;
@@ -766,50 +803,6 @@ pub extern "C" fn rs_dns_tx_get_alstate_progress(_tx: *mut std::os::raw::c_void,
 }
 
 #[no_mangle]
-pub extern "C" fn rs_dns_tx_set_detect_flags(tx: *mut std::os::raw::c_void,
-                                             dir: u8,
-                                             flags: u64)
-{
-    let tx = cast_pointer!(tx, DNSTransaction);
-    if dir & core::STREAM_TOSERVER != 0 {
-        tx.detect_flags_ts = flags as u64;
-    } else {
-        tx.detect_flags_tc = flags as u64;
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn rs_dns_tx_get_detect_flags(tx: *mut std::os::raw::c_void,
-                                             dir: u8)
-                                       -> u64
-{
-    let tx = cast_pointer!(tx, DNSTransaction);
-    if dir & core::STREAM_TOSERVER != 0 {
-        return tx.detect_flags_ts as u64;
-    } else {
-        return tx.detect_flags_tc as u64;
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn rs_dns_tx_set_logged(_state: *mut std::os::raw::c_void,
-                                       tx: *mut std::os::raw::c_void,
-                                       logged: u32)
-{
-    let tx = cast_pointer!(tx, DNSTransaction);
-    tx.logged.set(logged);
-}
-
-#[no_mangle]
-pub extern "C" fn rs_dns_tx_get_logged(_state: *mut std::os::raw::c_void,
-                                       tx: *mut std::os::raw::c_void)
-                                       -> u32
-{
-    let tx = cast_pointer!(tx, DNSTransaction);
-    return tx.logged.get();
-}
-
-#[no_mangle]
 pub extern "C" fn rs_dns_state_get_tx_count(state: *mut std::os::raw::c_void)
                                             -> u64
 {
@@ -866,6 +859,15 @@ pub extern "C" fn rs_dns_state_get_events(tx: *mut std::os::raw::c_void)
 {
     let tx = cast_pointer!(tx, DNSTransaction);
     return tx.events;
+}
+
+#[no_mangle]
+pub extern "C" fn rs_dns_state_get_tx_data(
+    tx: *mut std::os::raw::c_void)
+    -> *mut AppLayerTxData
+{
+    let tx = cast_pointer!(tx, DNSTransaction);
+    return &mut tx.tx_data;
 }
 
 #[no_mangle]
@@ -989,6 +991,23 @@ pub extern "C" fn rs_dns_probe_tcp(
 }
 
 #[no_mangle]
+pub extern "C" fn rs_dns_apply_tx_config(
+    _state: *mut std::os::raw::c_void, _tx: *mut std::os::raw::c_void,
+    _mode: std::os::raw::c_int, config: AppLayerTxConfig
+) {
+    let tx = cast_pointer!(_tx, DNSTransaction);
+    let state = cast_pointer!(_state, DNSState);
+    if let Some(request) = &tx.request {
+        if state.config.is_none() {
+            state.config = Some(ConfigTracker::new());
+        }
+        if let Some(ref mut tracker) = &mut state.config {
+            tracker.add(request.header.tx_id, config);
+        }
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn rs_dns_init(proto: AppProto) {
     *ALPROTO_DNS.lock().unwrap() = proto;
 }
@@ -1013,8 +1032,6 @@ pub unsafe extern "C" fn rs_dns_udp_register_parser() {
         get_tx: rs_dns_state_get_tx,
         tx_get_comp_st: rs_dns_state_progress_completion_status,
         tx_get_progress: rs_dns_tx_get_alstate_progress,
-        get_tx_logged: Some(rs_dns_tx_get_logged),
-        set_tx_logged: Some(rs_dns_tx_set_logged),
         get_events: Some(rs_dns_state_get_events),
         get_eventinfo: Some(rs_dns_state_get_event_info),
         get_eventinfo_byid: Some(rs_dns_state_get_event_info_by_id),
@@ -1022,10 +1039,10 @@ pub unsafe extern "C" fn rs_dns_udp_register_parser() {
         localstorage_free: None,
         get_files: None,
         get_tx_iterator: None,
-        get_tx_detect_flags: Some(rs_dns_tx_get_detect_flags),
-        set_tx_detect_flags: Some(rs_dns_tx_set_detect_flags),
         get_de_state: rs_dns_state_get_tx_detect_state,
         set_de_state: rs_dns_state_set_tx_detect_state,
+        get_tx_data: rs_dns_state_get_tx_data,
+        apply_tx_config: Some(rs_dns_apply_tx_config),
     };
 
     let ip_proto_str = CString::new("udp").unwrap();
@@ -1035,6 +1052,8 @@ pub unsafe extern "C" fn rs_dns_udp_register_parser() {
         if AppLayerParserConfParserEnabled(ip_proto_str.as_ptr(), parser.name) != 0 {
             let _ = AppLayerRegisterParser(&parser, alproto);
         }
+        AppLayerParserRegisterOptionFlags(IPPROTO_UDP as u8, ALPROTO_DNS,
+            crate::applayer::APP_LAYER_PARSER_OPT_UNIDIR_TXS);
     }
 }
 
@@ -1058,8 +1077,6 @@ pub unsafe extern "C" fn rs_dns_tcp_register_parser() {
         get_tx: rs_dns_state_get_tx,
         tx_get_comp_st: rs_dns_state_progress_completion_status,
         tx_get_progress: rs_dns_tx_get_alstate_progress,
-        get_tx_logged: Some(rs_dns_tx_get_logged),
-        set_tx_logged: Some(rs_dns_tx_set_logged),
         get_events: Some(rs_dns_state_get_events),
         get_eventinfo: Some(rs_dns_state_get_event_info),
         get_eventinfo_byid: Some(rs_dns_state_get_event_info_by_id),
@@ -1067,10 +1084,10 @@ pub unsafe extern "C" fn rs_dns_tcp_register_parser() {
         localstorage_free: None,
         get_files: None,
         get_tx_iterator: None,
-        get_tx_detect_flags: Some(rs_dns_tx_get_detect_flags),
-        set_tx_detect_flags: Some(rs_dns_tx_set_detect_flags),
         get_de_state: rs_dns_state_get_tx_detect_state,
         set_de_state: rs_dns_state_set_tx_detect_state,
+        get_tx_data: rs_dns_state_get_tx_data,
+        apply_tx_config: Some(rs_dns_apply_tx_config),
     };
 
     let ip_proto_str = CString::new("tcp").unwrap();
@@ -1082,6 +1099,8 @@ pub unsafe extern "C" fn rs_dns_tcp_register_parser() {
         }
         AppLayerParserRegisterOptionFlags(IPPROTO_TCP as u8, *ALPROTO_DNS.lock().unwrap(),
             crate::applayer::APP_LAYER_PARSER_OPT_ACCEPT_GAPS);
+        AppLayerParserRegisterOptionFlags(IPPROTO_TCP as u8, ALPROTO_DNS,
+            crate::applayer::APP_LAYER_PARSER_OPT_UNIDIR_TXS);
     }
 }
 

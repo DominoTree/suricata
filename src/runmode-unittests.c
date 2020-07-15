@@ -97,8 +97,6 @@
 #include "util-mpm-ac.h"
 #include "util-mpm-hs.h"
 
-#include "util-decode-asn1.h"
-
 #include "conf.h"
 #include "conf-yaml-loader.h"
 #include "tmqh-flow.h"
@@ -159,7 +157,6 @@ static void RegisterUnittests(void)
     DecodeTCPRegisterTests();
     DecodeUDPV4RegisterTests();
     DecodeGRERegisterTests();
-    DecodeAsn1RegisterTests();
     DecodeMPLSRegisterTests();
     AppLayerProtoDetectUnittestsRegister();
     ConfRegisterTests();
@@ -301,8 +298,7 @@ void RunUnittests(int list_unittests, const char *regex_arg)
 
     exit(EXIT_SUCCESS);
 #else
-    SCLogError(SC_ERR_NOT_SUPPORTED, "Unittests are not build-in");
-    exit(EXIT_FAILURE);
+    FatalError(SC_ERR_FATAL, "Unittests are not build-in");
 #endif /* UNITTESTS */
 }
 

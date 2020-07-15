@@ -36,9 +36,9 @@ pub struct TemplateTransaction {
     pub request: Option<String>,
     pub response: Option<String>,
 
-    logged: LoggerFlags,
     de_state: Option<*mut core::DetectEngineState>,
     events: *mut core::AppLayerDecoderEvents,
+    tx_data: AppLayerTxData,
 }
 
 impl TemplateTransaction {
@@ -47,9 +47,9 @@ impl TemplateTransaction {
             tx_id: 0,
             request: None,
             response: None,
-            logged: LoggerFlags::new(),
             de_state: None,
             events: std::ptr::null_mut(),
+            tx_data: AppLayerTxData::new(),
         }
     }
 
@@ -393,25 +393,6 @@ pub extern "C" fn rs_template_tx_get_alstate_progress(
 }
 
 #[no_mangle]
-pub extern "C" fn rs_template_tx_get_logged(
-    _state: *mut std::os::raw::c_void,
-    tx: *mut std::os::raw::c_void,
-) -> u32 {
-    let tx = cast_pointer!(tx, TemplateTransaction);
-    return tx.logged.get();
-}
-
-#[no_mangle]
-pub extern "C" fn rs_template_tx_set_logged(
-    _state: *mut std::os::raw::c_void,
-    tx: *mut std::os::raw::c_void,
-    logged: u32,
-) {
-    let tx = cast_pointer!(tx, TemplateTransaction);
-    tx.logged.set(logged);
-}
-
-#[no_mangle]
 pub extern "C" fn rs_template_state_get_events(
     tx: *mut std::os::raw::c_void
 ) -> *mut core::AppLayerDecoderEvents {
@@ -506,6 +487,8 @@ pub extern "C" fn rs_template_get_response_buffer(
     return 0;
 }
 
+export_tx_data_get!(rs_template_get_tx_data, TemplateTransaction);
+
 // Parser name as a C style string.
 const PARSER_NAME: &'static [u8] = b"template-rust\0";
 
@@ -529,8 +512,6 @@ pub unsafe extern "C" fn rs_template_register_parser() {
         get_tx: rs_template_state_get_tx,
         tx_get_comp_st: rs_template_state_progress_completion_status,
         tx_get_progress: rs_template_tx_get_alstate_progress,
-        get_tx_logged: Some(rs_template_tx_get_logged),
-        set_tx_logged: Some(rs_template_tx_set_logged),
         get_de_state: rs_template_tx_get_detect_state,
         set_de_state: rs_template_tx_set_detect_state,
         get_events: Some(rs_template_state_get_events),
@@ -540,8 +521,8 @@ pub unsafe extern "C" fn rs_template_register_parser() {
         localstorage_free: None,
         get_files: None,
         get_tx_iterator: Some(rs_template_state_get_tx_iterator),
-        get_tx_detect_flags: None,
-        set_tx_detect_flags: None,
+        get_tx_data: rs_template_get_tx_data,
+        apply_tx_config: None,
     };
 
     let ip_proto_str = CString::new("tcp").unwrap();

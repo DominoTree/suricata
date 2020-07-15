@@ -447,7 +447,8 @@ outputs:
       #force-filestore: yes
 
       # Override the global stream-depth for sessions in which we want
-      # to perform file extraction. Set to 0 for unlimited.
+      # to perform file extraction. Set to 0 for unlimited; otherwise,
+      # must be greater than the global stream-depth value to be used.
       #stream-depth: 0
 
       # Uncomment the following variable to define how many files can
@@ -743,6 +744,7 @@ app-layer:
       #enabled: yes
     ssh:
       enabled: yes
+      #hassh: yes
     smtp:
       enabled: yes
       raw-extraction: no

@@ -62,6 +62,7 @@ pub struct RdpTransaction {
     pub item: RdpTransactionItem,
     // managed by macros `export_tx_get_detect_state!` and `export_tx_set_detect_state!`
     de_state: Option<*mut DetectEngineState>,
+    tx_data: AppLayerTxData,
 }
 
 impl RdpTransaction {
@@ -70,6 +71,7 @@ impl RdpTransaction {
             id,
             item,
             de_state: None,
+            tx_data: AppLayerTxData::new(),
         }
     }
 
@@ -498,6 +500,8 @@ pub extern "C" fn rs_rdp_parse_tc(
     }
 }
 
+export_tx_data_get!(rs_rdp_get_tx_data, RdpTransaction);
+
 //
 // registration
 //
@@ -524,8 +528,6 @@ pub unsafe extern "C" fn rs_rdp_register_parser() {
         get_tx: rs_rdp_state_get_tx,
         tx_get_comp_st: rs_rdp_tx_get_progress_complete,
         tx_get_progress: rs_rdp_tx_get_progress,
-        get_tx_logged: None,
-        set_tx_logged: None,
         get_de_state: rs_rdp_tx_get_detect_state,
         set_de_state: rs_rdp_tx_set_detect_state,
         get_events: None,
@@ -535,8 +537,8 @@ pub unsafe extern "C" fn rs_rdp_register_parser() {
         localstorage_free: None,
         get_files: None,
         get_tx_iterator: None,
-        get_tx_detect_flags: None,
-        set_tx_detect_flags: None,
+        get_tx_data: rs_rdp_get_tx_data,
+        apply_tx_config: None,
     };
 
     let ip_proto_str = std::ffi::CString::new("tcp").unwrap();

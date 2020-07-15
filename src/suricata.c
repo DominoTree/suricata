@@ -154,7 +154,6 @@
 #include "runmodes.h"
 #include "runmode-unittests.h"
 
-#include "util-decode-asn1.h"
 #include "util-debug.h"
 #include "util-error.h"
 #include "util-daemon.h"
@@ -468,10 +467,9 @@ static void SetBpfStringFromFile(char *filename)
     size_t nm = 0;
 
     if (EngineModeIsIPS()) {
-        SCLogError(SC_ERR_NOT_SUPPORTED,
-                   "BPF filter not available in IPS mode."
-                   " Use firewall filtering if possible.");
-        exit(EXIT_FAILURE);
+                   FatalError(SC_ERR_FATAL,
+                              "BPF filter not available in IPS mode."
+                              " Use firewall filtering if possible.");
     }
 
 #ifdef OS_WIN32
@@ -633,6 +631,9 @@ static void PrintUsage(const char *progname)
 #ifdef WINDIVERT
     printf("\t--windivert <filter>                 : run in inline WinDivert mode\n");
     printf("\t--windivert-forward <filter>         : run in inline WinDivert mode, as a gateway\n");
+#endif
+#ifdef HAVE_LIBNET11
+    printf("\t--reject-dev <dev>                   : send reject packets from this interface\n");
 #endif
     printf("\t--set name=value                     : set a configuration value\n");
     printf("\n");
@@ -1230,6 +1231,9 @@ static TmEcode ParseCommandLine(int argc, char** argv, SCInstance *suri)
         {"windivert", required_argument, 0, 0},
         {"windivert-forward", required_argument, 0, 0},
 #endif
+#ifdef HAVE_LIBNET11
+        {"reject-dev", required_argument, 0, 0},
+#endif
         {"set", required_argument, 0, 0},
 #ifdef HAVE_NFLOG
         {"nflog", optional_argument, 0, 0},
@@ -1524,15 +1528,28 @@ static TmEcode ParseCommandLine(int argc, char** argv, SCInstance *suri)
                 SCLogError(SC_ERR_WINDIVERT_NOSUPPORT,"WinDivert not enabled. Make sure to pass --enable-windivert to configure when building.");
                 return TM_ECODE_FAILED;
 #endif /* WINDIVERT */
+            } else if(strcmp((long_opts[option_index]).name, "reject-dev") == 0) {
+#ifdef HAVE_LIBNET11
+                extern char *g_reject_dev;
+                extern uint16_t g_reject_dev_mtu;
+                g_reject_dev = optarg;
+                int mtu = GetIfaceMTU(g_reject_dev);
+                if (mtu > 0) {
+                    g_reject_dev_mtu = (uint16_t)mtu;
+                }
+#else
+                SCLogError(SC_ERR_LIBNET_NOT_ENABLED,
+                        "Libnet 1.1 support not enabled. Compile Suricata with libnet support.");
+                return TM_ECODE_FAILED;
+#endif
             }
             else if (strcmp((long_opts[option_index]).name, "set") == 0) {
                 if (optarg != NULL) {
                     /* Quick validation. */
                     char *val = strchr(optarg, '=');
                     if (val == NULL) {
-                        SCLogError(SC_ERR_CMD_LINE,
-                                "Invalid argument for --set, must be key=val.");
-                        exit(EXIT_FAILURE);
+                                FatalError(SC_ERR_FATAL,
+                                           "Invalid argument for --set, must be key=val.");
                     }
                     if (!ConfSetFromString(optarg, 1)) {
                         fprintf(stderr, "Failed to set configuration value %s.",
@@ -2296,9 +2313,8 @@ void PostConfLoadedDetectSetup(SCInstance *suri)
         if (mt_enabled)
             (void)ConfGetBool("multi-detect.default", &default_tenant);
         if (DetectEngineMultiTenantSetup() == -1) {
-            SCLogError(SC_ERR_INITIALIZATION, "initializing multi-detect "
-                    "detection engine contexts failed.");
-            exit(EXIT_FAILURE);
+            FatalError(SC_ERR_FATAL, "initializing multi-detect "
+                       "detection engine contexts failed.");
         }
         if (suri->delayed_detect && suri->run_mode != RUNMODE_CONF_TEST) {
             de_ctx = DetectEngineCtxInitStubForDD();
@@ -2308,9 +2324,8 @@ void PostConfLoadedDetectSetup(SCInstance *suri)
             de_ctx = DetectEngineCtxInit();
         }
         if (de_ctx == NULL) {
-            SCLogError(SC_ERR_INITIALIZATION, "initializing detection engine "
-                    "context failed.");
-            exit(EXIT_FAILURE);
+            FatalError(SC_ERR_FATAL, "initializing detection engine "
+                       "context failed.");
         }
 
         if (de_ctx->type == DETECT_ENGINE_TYPE_NORMAL) {
@@ -2567,7 +2582,6 @@ int PostConfLoadedSetup(SCInstance *suri)
     }
 
     HostInitConfig(HOST_VERBOSE);
-    SCAsn1LoadConfig();
 
     CoredumpLoadConfig();
 
@@ -2770,9 +2784,8 @@ int SuricataMain(int argc, char **argv)
 
     /* Wait till all the threads have been initialized */
     if (TmThreadWaitOnThreadInit() == TM_ECODE_FAILED) {
-        SCLogError(SC_ERR_INITIALIZATION, "Engine initialization failed, "
+        FatalError(SC_ERR_FATAL, "Engine initialization failed, "
                    "aborting...");
-        exit(EXIT_FAILURE);
     }
 
     SC_ATOMIC_SET(engine_stage, SURICATA_RUNTIME);

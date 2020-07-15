@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2017 Open Information Security Foundation
+/* Copyright (C) 2007-2020 Open Information Security Foundation
  *
  * You can copy, redistribute or modify this Program under the terms of
  * the GNU General Public License version 2 as published by the Free
@@ -55,7 +55,6 @@
 #include "util-debug.h"
 #include "util-memcmp.h"
 #include "util-memrchr.h"
-#include "util-byte.h"
 #include "util-mem.h"
 #include "util-misc.h"
 
@@ -940,24 +939,10 @@ static DetectEngineState *FTPGetTxDetectState(void *vtx)
 }
 
 
-static uint64_t FTPGetTxDetectFlags(void *vtx, uint8_t dir)
+static AppLayerTxData *FTPGetTxData(void *vtx)
 {
     FTPTransaction *tx = (FTPTransaction *)vtx;
-    if (dir & STREAM_TOSERVER) {
-        return tx->detect_flags_ts;
-    } else {
-        return tx->detect_flags_tc;
-    }
-}
-
-static void FTPSetTxDetectFlags(void *vtx, uint8_t dir, uint64_t flags)
-{
-    FTPTransaction *tx = (FTPTransaction *)vtx;
-    if (dir & STREAM_TOSERVER) {
-        tx->detect_flags_ts = flags;
-    } else {
-        tx->detect_flags_tc = flags;
-    }
+    return &tx->tx_data;
 }
 
 static void FTPStateTransactionFree(void *state, uint64_t tx_id)
@@ -1134,17 +1119,6 @@ out:
     SCReturnStruct(APP_LAYER_OK);
 }
 
-static void FTPStateSetTxLogged(void *state, void *vtx, LoggerId logged)
-{
-    FTPTransaction *tx = vtx;
-    tx->logged = logged;
-}
-
-static LoggerId FTPStateGetTxLogged(void *state, void *vtx)
-{
-    FTPTransaction *tx = vtx;
-    return tx->logged;
-}
 static AppLayerResult FTPDataParseRequest(Flow *f, void *ftp_state,
         AppLayerParserState *pstate,
         const uint8_t *input, uint32_t input_len,
@@ -1222,24 +1196,10 @@ static DetectEngineState *FTPDataGetTxDetectState(void *vtx)
     return ftp_state->de_state;
 }
 
-static void FTPDataSetTxDetectFlags(void *vtx, uint8_t dir, uint64_t flags)
+static AppLayerTxData *FTPDataGetTxData(void *vtx)
 {
     FtpDataState *ftp_state = (FtpDataState *)vtx;
-    if (dir & STREAM_TOSERVER) {
-        ftp_state->detect_flags_ts = flags;
-    } else {
-        ftp_state->detect_flags_tc = flags;
-    }
-}
-
-static uint64_t FTPDataGetTxDetectFlags(void *vtx, uint8_t dir)
-{
-    FtpDataState *ftp_state = (FtpDataState *)vtx;
-    if (dir & STREAM_TOSERVER) {
-        return ftp_state->detect_flags_ts;
-    } else {
-        return ftp_state->detect_flags_tc;
-    }
+    return &ftp_state->tx_data;
 }
 
 static void FTPDataStateTransactionFree(void *state, uint64_t tx_id)
@@ -1341,12 +1301,8 @@ void RegisterFTPParsers(void)
         AppLayerParserRegisterDetectStateFuncs(IPPROTO_TCP, ALPROTO_FTP,
                 FTPGetTxDetectState, FTPSetTxDetectState);
 
-        AppLayerParserRegisterDetectFlagsFuncs(IPPROTO_TCP, ALPROTO_FTP,
-                                               FTPGetTxDetectFlags, FTPSetTxDetectFlags);
-
         AppLayerParserRegisterGetTx(IPPROTO_TCP, ALPROTO_FTP, FTPGetTx);
-        AppLayerParserRegisterLoggerFuncs(IPPROTO_TCP, ALPROTO_FTP, FTPStateGetTxLogged,
-                                          FTPStateSetTxLogged);
+        AppLayerParserRegisterTxDataFunc(IPPROTO_TCP, ALPROTO_FTP, FTPGetTxData);
 
         AppLayerParserRegisterLocalStorageFunc(IPPROTO_TCP, ALPROTO_FTP, FTPLocalStorageAlloc,
                                                FTPLocalStorageFree);
@@ -1368,12 +1324,11 @@ void RegisterFTPParsers(void)
         AppLayerParserRegisterTxFreeFunc(IPPROTO_TCP, ALPROTO_FTPDATA, FTPDataStateTransactionFree);
         AppLayerParserRegisterDetectStateFuncs(IPPROTO_TCP, ALPROTO_FTPDATA,
                 FTPDataGetTxDetectState, FTPDataSetTxDetectState);
-        AppLayerParserRegisterDetectFlagsFuncs(IPPROTO_TCP, ALPROTO_FTPDATA,
-                FTPDataGetTxDetectFlags, FTPDataSetTxDetectFlags);
 
         AppLayerParserRegisterGetFilesFunc(IPPROTO_TCP, ALPROTO_FTPDATA, FTPDataStateGetFiles);
 
         AppLayerParserRegisterGetTx(IPPROTO_TCP, ALPROTO_FTPDATA, FTPDataGetTx);
+        AppLayerParserRegisterTxDataFunc(IPPROTO_TCP, ALPROTO_FTPDATA, FTPDataGetTxData);
 
         AppLayerParserRegisterGetTxCnt(IPPROTO_TCP, ALPROTO_FTPDATA, FTPDataGetTxCnt);
 
@@ -1439,36 +1394,31 @@ uint16_t JsonGetNextLineFromBuffer(const char *buffer, const uint16_t len)
     return c == NULL ? len : c - buffer + 1;
 }
 
-json_t *JsonFTPDataAddMetadata(const Flow *f)
+void EveFTPDataAddMetadata(const Flow *f, JsonBuilder *jb)
 {
     const FtpDataState *ftp_state = NULL;
     if (f->alstate == NULL)
-        return NULL;
+        return;
+
     ftp_state = (FtpDataState *)f->alstate;
-    json_t *ftpd = json_object();
-    if (ftpd == NULL)
-        return NULL;
+
     if (ftp_state->file_name) {
-        size_t size = ftp_state->file_len * 2 + 1;
-        char string[size];
-        BytesToStringBuffer(ftp_state->file_name, ftp_state->file_len, string, size);
-        json_object_set_new(ftpd, "filename", SCJsonString(string));
+        jb_set_string_from_bytes(jb, "filename", ftp_state->file_name, ftp_state->file_len);
     }
     switch (ftp_state->command) {
         case FTP_COMMAND_STOR:
-            json_object_set_new(ftpd, "command", json_string("STOR"));
+            JB_SET_STRING(jb, "command", "STOR");
             break;
         case FTP_COMMAND_RETR:
-            json_object_set_new(ftpd, "command", json_string("RETR"));
+            JB_SET_STRING(jb, "command", "RETR");
             break;
         default:
             break;
     }
-    return ftpd;
 }
 
 /**
- * \brief Free memory allocated for global SMTP parser state.
+ * \brief Free memory allocated for global FTP parser state.
  */
 void FTPParserCleanup(void)
 {

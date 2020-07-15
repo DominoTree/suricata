@@ -992,37 +992,32 @@ static int SigParseAction(Signature *s, const char *action)
 {
     if (strcasecmp(action, "alert") == 0) {
         s->action = ACTION_ALERT;
-        return 0;
     } else if (strcasecmp(action, "drop") == 0) {
         s->action = ACTION_DROP;
-        return 0;
     } else if (strcasecmp(action, "pass") == 0) {
         s->action = ACTION_PASS;
-        return 0;
-    } else if (strcasecmp(action, "reject") == 0) {
+    } else if (strcasecmp(action, "reject") == 0 ||
+               strcasecmp(action, "rejectsrc") == 0)
+    {
         if (!(SigParseActionRejectValidate(action)))
             return -1;
         s->action = ACTION_REJECT|ACTION_DROP;
-        return 0;
-    } else if (strcasecmp(action, "rejectsrc") == 0) {
-        if (!(SigParseActionRejectValidate(action)))
-            return -1;
-        s->action = ACTION_REJECT|ACTION_DROP;
-        return 0;
     } else if (strcasecmp(action, "rejectdst") == 0) {
         if (!(SigParseActionRejectValidate(action)))
             return -1;
         s->action = ACTION_REJECT_DST|ACTION_DROP;
-        return 0;
     } else if (strcasecmp(action, "rejectboth") == 0) {
         if (!(SigParseActionRejectValidate(action)))
             return -1;
         s->action = ACTION_REJECT_BOTH|ACTION_DROP;
-        return 0;
+    } else if (strcasecmp(action, "config") == 0) {
+        s->action = ACTION_CONFIG;
+        s->flags |= SIG_FLAG_NOALERT;
     } else {
         SCLogError(SC_ERR_INVALID_ACTION,"An invalid action \"%s\" was given",action);
         return -1;
     }
+    return 0;
 }
 
 /**
@@ -1618,8 +1613,7 @@ SigMatchData* SigMatchList2DataArray(SigMatch *head)
 
     SigMatchData *smd = (SigMatchData *)SCCalloc(len, sizeof(SigMatchData));
     if (smd == NULL) {
-        SCLogError(SC_ERR_DETECT_PREPARE, "initializing the detection engine failed");
-        exit(EXIT_FAILURE);
+        FatalError(SC_ERR_FATAL, "initializing the detection engine failed");
     }
     SigMatchData *out = smd;
 
@@ -2271,11 +2265,23 @@ static inline int DetectEngineSignatureIsDuplicate(DetectEngineCtx *de_ctx,
         memset(&sw_temp, 0, sizeof(SigDuplWrapper));
         if (sw_dup->s->init_data->init_flags & SIG_FLAG_INIT_BIDIREC) {
             sw_temp.s = sw_dup->s->next->next;
-            sw_dup->s_prev->next = sw_dup->s->next->next;
+            /* If previous signature is bidirectional,
+             * it has 2 items in the linked list.
+             * So we need to change next->next instead of next
+             */
+            if (sw_dup->s_prev->init_data->init_flags & SIG_FLAG_INIT_BIDIREC) {
+                sw_dup->s_prev->next->next = sw_dup->s->next->next;
+            } else {
+                sw_dup->s_prev->next = sw_dup->s->next->next;
+            }
             SigFree(de_ctx, sw_dup->s->next);
         } else {
             sw_temp.s = sw_dup->s->next;
-            sw_dup->s_prev->next = sw_dup->s->next;
+            if (sw_dup->s_prev->init_data->init_flags & SIG_FLAG_INIT_BIDIREC) {
+                sw_dup->s_prev->next->next = sw_dup->s->next;
+            } else {
+                sw_dup->s_prev->next = sw_dup->s->next;
+            }
         }
         SigDuplWrapper *sw_next = NULL;
         if (sw_temp.s != NULL) {
@@ -2439,32 +2445,35 @@ void DetectParseRegexAddToFreeList(DetectParseRegex *detect_parse)
     g_detect_parse_regex_list = r;
 }
 
-void DetectSetupParseRegexesOpts(const char *parse_str, DetectParseRegex *detect_parse, int opts)
+bool DetectSetupParseRegexesOpts(const char *parse_str, DetectParseRegex *detect_parse, int opts)
 {
     const char *eb;
     int eo;
 
     detect_parse->regex = pcre_compile(parse_str, opts, &eb, &eo, NULL);
     if (detect_parse->regex == NULL) {
-        FatalError(SC_ERR_PCRE_COMPILE, "pcre compile of \"%s\" failed at "
+        SCLogError(SC_ERR_PCRE_COMPILE, "pcre compile of \"%s\" failed at "
                 "offset %" PRId32 ": %s", parse_str, eo, eb);
+        return false;
     }
 
     detect_parse->study = pcre_study(detect_parse->regex, 0 , &eb);
     if (eb != NULL) {
-        FatalError(SC_ERR_PCRE_STUDY, "pcre study failed: %s", eb);
+        SCLogError(SC_ERR_PCRE_STUDY, "pcre study failed: %s", eb);
+        return false;
     }
 
 
     DetectParseRegexAddToFreeList(detect_parse);
 
-    return;
+    return true;
 }
 
 void DetectSetupParseRegexes(const char *parse_str, DetectParseRegex *detect_parse)
 {
-    DetectSetupParseRegexesOpts(parse_str, detect_parse, 0);
-    return;
+    if (!DetectSetupParseRegexesOpts(parse_str, detect_parse, 0)) {
+        FatalError(SC_ERR_PCRE_COMPILE, "pcre compile and study failed");
+    }
 }
 
 

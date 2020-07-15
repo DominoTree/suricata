@@ -18,7 +18,6 @@
 #include "host-bit.h"
 #include "ippair-bit.h"
 #include "app-layer-htp.h"
-#include "util-decode-asn1.h"
 #include "detect-fast-pattern.h"
 #include "util-unittest-helper.h"
 #include "conf-yaml-loader.h"
@@ -128,6 +127,9 @@ app-layer:\n\
         sp: 44818\n\
     sip:\n\
       enabled: yes\n\
+    ssh:\n\
+      enabled: yes\n\
+      hassh: yes\n\
 ";
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)

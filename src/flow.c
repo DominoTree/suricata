@@ -56,6 +56,7 @@
 
 #include "util-debug.h"
 #include "util-privs.h"
+#include "util-validate.h"
 
 #include "detect.h"
 #include "detect-engine-state.h"
@@ -569,8 +570,7 @@ void FlowInitConfig(char quiet)
     if ((ConfGet("flow.memcap", &conf_val)) == 1)
     {
         if (conf_val == NULL) {
-            SCLogError(SC_ERR_INVALID_YAML_CONF_ENTRY,"Invalid value for flow.memcap: NULL");
-	    exit(EXIT_FAILURE);
+            FatalError(SC_ERR_FATAL, "Invalid value for flow.memcap: NULL");
         }
 
         if (ParseSizeStringU64(conf_val, &flow_memcap_copy) < 0) {
@@ -585,8 +585,7 @@ void FlowInitConfig(char quiet)
     if ((ConfGet("flow.hash-size", &conf_val)) == 1)
     {
         if (conf_val == NULL) {
-            SCLogError(SC_ERR_INVALID_YAML_CONF_ENTRY,"Invalid value for flow.hash-size: NULL");
-	    exit(EXIT_FAILURE);
+            FatalError(SC_ERR_FATAL, "Invalid value for flow.hash-size: NULL");
         }
 
         if (StringParseUint32(&configval, 10, strlen(conf_val),
@@ -597,8 +596,7 @@ void FlowInitConfig(char quiet)
     if ((ConfGet("flow.prealloc", &conf_val)) == 1)
     {
         if (conf_val == NULL) {
-            SCLogError(SC_ERR_INVALID_YAML_CONF_ENTRY,"Invalid value for flow.prealloc: NULL");
-	    exit(EXIT_FAILURE);
+            FatalError(SC_ERR_FATAL, "Invalid value for flow.prealloc: NULL");
         }
 
         if (StringParseUint32(&configval, 10, strlen(conf_val),
@@ -623,8 +621,8 @@ void FlowInitConfig(char quiet)
     }
     flow_hash = SCMallocAligned(flow_config.hash_size * sizeof(FlowBucket), CLS);
     if (unlikely(flow_hash == NULL)) {
-        SCLogError(SC_ERR_FATAL, "Fatal error encountered in FlowInitConfig. Exiting...");
-        exit(EXIT_FAILURE);
+        FatalError(SC_ERR_FATAL,
+                   "Fatal error encountered in FlowInitConfig. Exiting...");
     }
     memset(flow_hash, 0, flow_config.hash_size * sizeof(FlowBucket));
 
@@ -703,9 +701,7 @@ void FlowShutdown(void)
         for (u = 0; u < flow_config.hash_size; u++) {
             f = flow_hash[u].head;
             while (f) {
-#ifdef DEBUG_VALIDATION
-                BUG_ON(SC_ATOMIC_GET(f->use_cnt) != 0);
-#endif
+                DEBUG_VALIDATE_BUG_ON(SC_ATOMIC_GET(f->use_cnt) != 0);
                 Flow *n = f->hnext;
                 uint8_t proto_map = FlowGetProtoMapping(f->proto);
                 FlowClearMemory(f, proto_map);
@@ -745,24 +741,24 @@ void FlowInitFlowProto(void)
 
     SET_DEFAULTS(FLOW_PROTO_DEFAULT,
                 FLOW_DEFAULT_NEW_TIMEOUT, FLOW_DEFAULT_EST_TIMEOUT,
-                    FLOW_DEFAULT_CLOSED_TIMEOUT, FLOW_DEFAULT_BYPASSED_TIMEOUT,
+                    0, FLOW_DEFAULT_BYPASSED_TIMEOUT,
                 FLOW_DEFAULT_EMERG_NEW_TIMEOUT, FLOW_DEFAULT_EMERG_EST_TIMEOUT,
-                    FLOW_DEFAULT_EMERG_CLOSED_TIMEOUT, FLOW_DEFAULT_EMERG_BYPASSED_TIMEOUT);
+                    0, FLOW_DEFAULT_EMERG_BYPASSED_TIMEOUT);
     SET_DEFAULTS(FLOW_PROTO_TCP,
                 FLOW_IPPROTO_TCP_NEW_TIMEOUT, FLOW_IPPROTO_TCP_EST_TIMEOUT,
-                    FLOW_DEFAULT_CLOSED_TIMEOUT, FLOW_IPPROTO_TCP_BYPASSED_TIMEOUT,
+                    FLOW_IPPROTO_TCP_CLOSED_TIMEOUT, FLOW_IPPROTO_TCP_BYPASSED_TIMEOUT,
                 FLOW_IPPROTO_TCP_EMERG_NEW_TIMEOUT, FLOW_IPPROTO_TCP_EMERG_EST_TIMEOUT,
-                    FLOW_DEFAULT_EMERG_CLOSED_TIMEOUT, FLOW_DEFAULT_EMERG_BYPASSED_TIMEOUT);
+                    FLOW_IPPROTO_TCP_EMERG_CLOSED_TIMEOUT, FLOW_DEFAULT_EMERG_BYPASSED_TIMEOUT);
     SET_DEFAULTS(FLOW_PROTO_UDP,
                 FLOW_IPPROTO_UDP_NEW_TIMEOUT, FLOW_IPPROTO_UDP_EST_TIMEOUT,
-                    FLOW_DEFAULT_CLOSED_TIMEOUT, FLOW_IPPROTO_UDP_BYPASSED_TIMEOUT,
+                    0, FLOW_IPPROTO_UDP_BYPASSED_TIMEOUT,
                 FLOW_IPPROTO_UDP_EMERG_NEW_TIMEOUT, FLOW_IPPROTO_UDP_EMERG_EST_TIMEOUT,
-                    FLOW_DEFAULT_EMERG_CLOSED_TIMEOUT, FLOW_DEFAULT_EMERG_BYPASSED_TIMEOUT);
+                    0, FLOW_DEFAULT_EMERG_BYPASSED_TIMEOUT);
     SET_DEFAULTS(FLOW_PROTO_ICMP,
                 FLOW_IPPROTO_ICMP_NEW_TIMEOUT, FLOW_IPPROTO_ICMP_EST_TIMEOUT,
-                    FLOW_DEFAULT_CLOSED_TIMEOUT, FLOW_IPPROTO_ICMP_BYPASSED_TIMEOUT,
+                    0, FLOW_IPPROTO_ICMP_BYPASSED_TIMEOUT,
                 FLOW_IPPROTO_ICMP_EMERG_NEW_TIMEOUT, FLOW_IPPROTO_ICMP_EMERG_EST_TIMEOUT,
-                    FLOW_DEFAULT_EMERG_CLOSED_TIMEOUT, FLOW_DEFAULT_EMERG_BYPASSED_TIMEOUT);
+                    0, FLOW_DEFAULT_EMERG_BYPASSED_TIMEOUT);
 
     flow_freefuncs[FLOW_PROTO_DEFAULT].Freefunc = NULL;
     flow_freefuncs[FLOW_PROTO_TCP].Freefunc = NULL;

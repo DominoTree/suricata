@@ -77,7 +77,7 @@ pub struct NTPTransaction {
     /// The events associated with this transaction
     events: *mut core::AppLayerDecoderEvents,
 
-    logged: applayer::LoggerFlags,
+    tx_data: applayer::AppLayerTxData,
 }
 
 
@@ -161,7 +161,7 @@ impl NTPTransaction {
             id: id,
             de_state: None,
             events: std::ptr::null_mut(),
-            logged: applayer::LoggerFlags::new(),
+            tx_data: applayer::AppLayerTxData::new(),
         }
     }
 
@@ -177,11 +177,6 @@ impl Drop for NTPTransaction {
         self.free();
     }
 }
-
-
-
-
-
 
 /// Returns *mut NTPState
 #[no_mangle]
@@ -275,27 +270,6 @@ pub extern "C" fn rs_ntp_tx_get_alstate_progress(_tx: *mut std::os::raw::c_void,
 {
     1
 }
-
-
-
-
-
-#[no_mangle]
-pub extern "C" fn rs_ntp_tx_set_logged(_state: &mut NTPState,
-                                       tx: &mut NTPTransaction,
-                                       logged: u32)
-{
-    tx.logged.set(logged);
-}
-
-#[no_mangle]
-pub extern "C" fn rs_ntp_tx_get_logged(_state: &mut NTPState,
-                                       tx: &mut NTPTransaction)
-                                       -> u32
-{
-    return tx.logged.get();
-}
-
 
 #[no_mangle]
 pub extern "C" fn rs_ntp_state_set_tx_detect_state(
@@ -404,6 +378,8 @@ pub extern "C" fn ntp_probing_parser(_flow: *const Flow,
     }
 }
 
+export_tx_data_get!(rs_ntp_get_tx_data, NTPTransaction);
+
 const PARSER_NAME : &'static [u8] = b"ntp\0";
 
 #[no_mangle]
@@ -426,8 +402,6 @@ pub unsafe extern "C" fn rs_register_ntp_parser() {
         get_tx             : rs_ntp_state_get_tx,
         tx_get_comp_st     : rs_ntp_state_progress_completion_status,
         tx_get_progress    : rs_ntp_tx_get_alstate_progress,
-        get_tx_logged      : None,
-        set_tx_logged      : None,
         get_de_state       : rs_ntp_state_get_tx_detect_state,
         set_de_state       : rs_ntp_state_set_tx_detect_state,
         get_events         : Some(rs_ntp_state_get_events),
@@ -437,8 +411,8 @@ pub unsafe extern "C" fn rs_register_ntp_parser() {
         localstorage_free  : None,
         get_files          : None,
         get_tx_iterator    : None,
-        get_tx_detect_flags: None,
-        set_tx_detect_flags: None,
+        get_tx_data        : rs_ntp_get_tx_data,
+        apply_tx_config    : None,
     };
 
     let ip_proto_str = CString::new("udp").unwrap();

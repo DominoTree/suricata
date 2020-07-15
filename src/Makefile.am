@@ -96,12 +96,15 @@ detect-asn1.c detect-asn1.h \
 detect-base64-data.c detect-base64-data.h \
 detect-base64-decode.c detect-base64-decode.h \
 detect-bsize.c detect-bsize.h \
+detect-byte.c detect-byte.h \
 detect-byte-extract.c detect-byte-extract.h \
 detect-bytejump.c detect-bytejump.h \
+detect-bytemath.c detect-bytemath.h \
 detect-bytetest.c detect-bytetest.h \
 detect-bypass.c detect-bypass.h \
 detect.c detect.h \
 detect-classtype.c detect-classtype.h \
+detect-config.c detect-config.h \
 detect-content.c detect-content.h \
 detect-csum.c detect-csum.h \
 detect-datarep.c detect-datarep.h \
@@ -262,6 +265,10 @@ detect-ssh-proto.c detect-ssh-proto.h \
 detect-ssh-proto-version.c detect-ssh-proto-version.h \
 detect-ssh-software.c detect-ssh-software.h \
 detect-ssh-software-version.c detect-ssh-software-version.h \
+detect-ssh-hassh.c detect-ssh-hassh.h \
+detect-ssh-hassh-server.c detect-ssh-hassh-server.h \
+detect-ssh-hassh-string.c detect-ssh-hassh-string.h \
+detect-ssh-hassh-server-string.c detect-ssh-hassh-server-string.h \
 detect-smb-share.c detect-smb-share.h \
 detect-ssl-state.c detect-ssl-state.h \
 detect-ssl-version.c detect-ssl-version.h \
@@ -435,6 +442,7 @@ util-byte.c util-byte.h \
 util-checksum.c util-checksum.h \
 util-cidr.c util-cidr.h \
 util-classification-config.c util-classification-config.h \
+util-config.h \
 util-conf.c util-conf.h \
 util-coredump-config.c util-coredump-config.h \
 util-cpu.c util-cpu.h \
@@ -442,7 +450,6 @@ util-crypt.c util-crypt.h \
 util-daemon.c util-daemon.h \
 util-debug.c util-debug.h \
 util-debug-filters.c util-debug-filters.h \
-util-decode-asn1.c util-decode-asn1.h \
 util-decode-mime.c util-decode-mime.h \
 util-detect.c util-detect.h \
 util-device.c util-device.h \
@@ -476,6 +483,7 @@ util-lua-http.c util-lua-http.h \
 util-lua-ja3.c util-lua-ja3.h \
 util-lua-tls.c util-lua-tls.h \
 util-lua-ssh.c util-lua-ssh.h \
+util-lua-hassh.c util-lua-hassh.h \
 util-lua-smtp.c util-lua-smtp.h \
 util-magic.c util-magic.h \
 util-memcmp.c util-memcmp.h \

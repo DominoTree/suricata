@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2013 Open Information Security Foundation
+/* Copyright (C) 2007-2020 Open Information Security Foundation
  *
  * You can copy, redistribute or modify this Program under the terms of
  * the GNU General Public License version 2 as published by the Free
@@ -72,6 +72,7 @@ int OutputJSONMemBufferCallback(const char *str, size_t size, void *data);
 void CreateJSONFlowId(json_t *js, const Flow *f);
 void CreateEveFlowId(JsonBuilder *js, const Flow *f);
 void JsonTcpFlags(uint8_t flags, json_t *js);
+void EveFileInfo(JsonBuilder *js, const File *file, const bool stored);
 void EveTcpFlags(uint8_t flags, JsonBuilder *js);
 void JsonPacket(const Packet *p, json_t *js, unsigned long max_length);
 void EvePacket(const Packet *p, JsonBuilder *js, unsigned long max_length);
@@ -118,7 +119,6 @@ typedef struct OutputJsonThreadCtx_ {
 
 json_t *SCJsonBool(int val);
 json_t *SCJsonString(const char *val);
-json_t *JsonAddStringN(const char *string, size_t size);
 void SCJsonDecref(json_t *js);
 
 void JsonAddCommonOptions(const OutputJsonCommonSettings *cfg,

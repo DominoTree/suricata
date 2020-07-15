@@ -1118,8 +1118,8 @@ typedef struct DetectEngineThreadCtx_ {
     /** ip only rules ctx */
     DetectEngineIPOnlyThreadCtx io_ctx;
 
-    /* byte jump values */
-    uint64_t *bj_values;
+    /* byte_* values */
+    uint64_t *byte_values;
 
     /* string to replace */
     DetectReplaceList *replist;
@@ -1191,6 +1191,7 @@ typedef struct SigTableElmt_ {
 
     /** InspectionBuffer transformation callback */
     void (*Transform)(InspectionBuffer *, void *context);
+    bool (*TransformValidate)(const uint8_t *content, uint16_t content_len, void *context);
 
     /** keyword setup function pointer */
     int (*Setup)(DetectEngineCtx *, Signature *, const char *);
@@ -1495,7 +1496,7 @@ void DetectSignatureApplyActions(Packet *p, const Signature *s, const uint8_t);
 void RuleMatchCandidateTxArrayInit(DetectEngineThreadCtx *det_ctx, uint32_t size);
 void RuleMatchCandidateTxArrayFree(DetectEngineThreadCtx *det_ctx);
 
-void DetectFlowbitsAnalyze(DetectEngineCtx *de_ctx);
+int DetectFlowbitsAnalyze(DetectEngineCtx *de_ctx);
 
 int DetectMetadataHashInit(DetectEngineCtx *de_ctx);
 void DetectMetadataHashFree(DetectEngineCtx *de_ctx);

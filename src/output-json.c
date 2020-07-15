@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2018 Open Information Security Foundation
+/* Copyright (C) 2007-2020 Open Information Security Foundation
  *
  * You can copy, redistribute or modify this Program under the terms of
  * the GNU General Public License version 2 as published by the Free
@@ -135,21 +135,81 @@ json_t *SCJsonString(const char *val)
 /* Default Sensor ID value */
 static int64_t sensor_id = -1; /* -1 = not defined */
 
-/**
- * \brief Create a JSON string from a character sequence
- *
- * \param Pointer to character sequence
- * \param Number of characters to use from the sequence
- * \retval JSON object for the character sequence
- */
-json_t *JsonAddStringN(const char *string, size_t size)
+void EveFileInfo(JsonBuilder *jb, const File *ff, const bool stored)
 {
-    char tmpbuf[size + 1];
+    jb_set_string_from_bytes(jb, "filename", ff->name, ff->name_len);
 
-    memcpy(tmpbuf, string, size);
-    tmpbuf[size] = '\0';
+    jb_open_array(jb, "sid");
+    for (uint32_t i = 0; ff->sid != NULL && i < ff->sid_cnt; i++) {
+        jb_append_uint(jb, ff->sid[i]);
+    }
+    jb_close(jb);
 
-    return SCJsonString(tmpbuf);
+#ifdef HAVE_MAGIC
+    if (ff->magic)
+        jb_set_string(jb, "magic", (char *)ff->magic);
+#endif
+    jb_set_bool(jb, "gaps", ff->flags & FILE_HAS_GAPS);
+    switch (ff->state) {
+        case FILE_STATE_CLOSED:
+            JB_SET_STRING(jb, "state", "CLOSED");
+#ifdef HAVE_NSS
+            if (ff->flags & FILE_MD5) {
+                size_t x;
+                int i;
+                char str[256];
+                for (i = 0, x = 0; x < sizeof(ff->md5); x++) {
+                    i += snprintf(&str[i], 255-i, "%02x", ff->md5[x]);
+                }
+                jb_set_string(jb, "md5", str);
+            }
+            if (ff->flags & FILE_SHA1) {
+                size_t x;
+                int i;
+                char str[256];
+                for (i = 0, x = 0; x < sizeof(ff->sha1); x++) {
+                    i += snprintf(&str[i], 255-i, "%02x", ff->sha1[x]);
+                }
+                jb_set_string(jb, "sha1", str);
+            }
+#endif
+            break;
+        case FILE_STATE_TRUNCATED:
+            JB_SET_STRING(jb, "state", "TRUNCATED");
+            break;
+        case FILE_STATE_ERROR:
+            JB_SET_STRING(jb, "state", "ERROR");
+            break;
+        default:
+            JB_SET_STRING(jb, "state", "UNKNOWN");
+            break;
+    }
+
+#ifdef HAVE_NSS
+    if (ff->flags & FILE_SHA256) {
+        size_t x;
+        int i;
+        char str[256];
+        for (i = 0, x = 0; x < sizeof(ff->sha256); x++) {
+            i += snprintf(&str[i], 255-i, "%02x", ff->sha256[x]);
+        }
+        jb_set_string(jb, "sha256", str);
+    }
+#endif
+
+    if (stored) {
+        JB_SET_TRUE(jb, "stored");
+        jb_set_uint(jb, "file_id", ff->file_store_id);
+    } else {
+        JB_SET_FALSE(jb, "stored");
+    }
+
+    jb_set_uint(jb, "size", FileTrackedSize(ff));
+    if (ff->end > 0) {
+        jb_set_uint(jb, "start", ff->start);
+        jb_set_uint(jb, "end", ff->end);
+    }
+    jb_set_uint(jb, "tx_id", ff->txid);
 }
 
 static void JsonAddPacketvars(const Packet *p, json_t *js_vars)
@@ -721,7 +781,6 @@ void JsonAddrInfoInit(const Packet *p, enum OutputJsonLogDirection dir, JsonAddr
 {
     char srcip[46] = {0}, dstip[46] = {0};
     Port sp, dp;
-    char proto[16];
 
     switch (dir) {
         case LOG_DIR_PACKET:
@@ -810,11 +869,6 @@ void JsonAddrInfoInit(const Packet *p, enum OutputJsonLogDirection dir, JsonAddr
             return;
     }
 
-    if (SCProtoNameValid(IP_GET_IPPROTO(p)) == TRUE) {
-        strlcpy(proto, known_proto[IP_GET_IPPROTO(p)], sizeof(proto));
-    } else {
-        snprintf(proto, sizeof(proto), "%03" PRIu32, IP_GET_IPPROTO(p));
-    }
 
     strlcpy(addr->src_ip, srcip, JSON_ADDR_LEN);
 
@@ -840,7 +894,11 @@ void JsonAddrInfoInit(const Packet *p, enum OutputJsonLogDirection dir, JsonAddr
             break;
     }
 
-    strlcpy(addr->proto, proto, JSON_PROTO_LEN);
+    if (SCProtoNameValid(IP_GET_IPPROTO(p))) {
+        strlcpy(addr->proto, known_proto[IP_GET_IPPROTO(p)], sizeof(addr->proto));
+    } else {
+        snprintf(addr->proto, sizeof(addr->proto), "%" PRIu32, IP_GET_IPPROTO(p));
+    }
 }
 
 /**
@@ -854,7 +912,6 @@ void JsonFiveTuple(const Packet *p, enum OutputJsonLogDirection dir, json_t *js)
 {
     char srcip[46] = {0}, dstip[46] = {0};
     Port sp, dp;
-    char proto[16];
 
     switch (dir) {
         case LOG_DIR_PACKET:
@@ -943,11 +1000,6 @@ void JsonFiveTuple(const Packet *p, enum OutputJsonLogDirection dir, json_t *js)
             return;
     }
 
-    if (SCProtoNameValid(IP_GET_IPPROTO(p)) == TRUE) {
-        strlcpy(proto, known_proto[IP_GET_IPPROTO(p)], sizeof(proto));
-    } else {
-        snprintf(proto, sizeof(proto), "%03" PRIu32, IP_GET_IPPROTO(p));
-    }
 
     json_object_set_new(js, "src_ip", json_string(srcip));
 
@@ -973,7 +1025,13 @@ void JsonFiveTuple(const Packet *p, enum OutputJsonLogDirection dir, json_t *js)
             break;
     }
 
-    json_object_set_new(js, "proto", json_string(proto));
+    if (SCProtoNameValid(IP_GET_IPPROTO(p))) {
+        json_object_set_new(js, "proto", json_string(known_proto[IP_GET_IPPROTO(p)]));
+    } else {
+        char proto[4];
+        snprintf(proto, sizeof(proto), "%"PRIu32"", IP_GET_IPPROTO(p));
+        json_object_set_new(js, "proto", json_string(proto));
+    }
 }
 
 #define COMMUNITY_ID_BUF_SIZE 64
@@ -1473,9 +1531,8 @@ OutputInitResult OutputJsonInitCtx(ConfNode *conf)
                 SCLogRedisInit();
                 json_ctx->json_out = LOGFILE_TYPE_REDIS;
 #else
-                SCLogError(SC_ERR_INVALID_ARGUMENT,
-                           "redis JSON output option is not compiled");
-                exit(EXIT_FAILURE);
+                           FatalError(SC_ERR_FATAL,
+                                      "redis JSON output option is not compiled");
 #endif
             } else {
                 SCLogError(SC_ERR_INVALID_ARGUMENT,
@@ -1491,9 +1548,8 @@ OutputInitResult OutputJsonInitCtx(ConfNode *conf)
             json_ctx->file_ctx->prefix = SCStrdup(prefix);
             if (json_ctx->file_ctx->prefix == NULL)
             {
-                SCLogError(SC_ERR_MEM_ALLOC,
-                    "Failed to allocate memory for eve-log.prefix setting.");
-                exit(EXIT_FAILURE);
+                    FatalError(SC_ERR_FATAL,
+                               "Failed to allocate memory for eve-log.prefix setting.");
             }
             json_ctx->file_ctx->prefix_len = strlen(prefix);
         }

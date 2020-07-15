@@ -71,6 +71,8 @@
 #include "detect-engine-event.h"
 #include "decode.h"
 
+#include "detect-config.h"
+
 #include "detect-smb-share.h"
 
 #include "detect-base64-decode.h"
@@ -89,6 +91,7 @@
 #include "detect-nocase.h"
 #include "detect-rawbytes.h"
 #include "detect-bytetest.h"
+#include "detect-bytemath.h"
 #include "detect-bytejump.h"
 #include "detect-sameip.h"
 #include "detect-l3proto.h"
@@ -223,6 +226,10 @@
 #include "detect-ssh-proto-version.h"
 #include "detect-ssh-software.h"
 #include "detect-ssh-software-version.h"
+#include "detect-ssh-hassh.h"
+#include "detect-ssh-hassh-server.h"
+#include "detect-ssh-hassh-string.h"
+#include "detect-ssh-hassh-server-string.h"
 #include "detect-http-stat-code.h"
 #include "detect-ssl-version.h"
 #include "detect-ssl-state.h"
@@ -477,6 +484,7 @@ void SigTableSetup(void)
     DetectRawbytesRegister();
     DetectBytetestRegister();
     DetectBytejumpRegister();
+    DetectBytemathRegister();
     DetectSameipRegister();
     DetectGeoipRegister();
     DetectL3ProtoRegister();
@@ -536,6 +544,10 @@ void SigTableSetup(void)
     DetectSshVersionRegister();
     DetectSshSoftwareRegister();
     DetectSshSoftwareVersionRegister();
+    DetectSshHasshRegister();
+    DetectSshHasshServerRegister();
+    DetectSshHasshStringRegister();
+    DetectSshHasshServerStringRegister();
     DetectSslStateRegister();
     DetectSslVersionRegister();
     DetectByteExtractRegister();
@@ -576,6 +588,7 @@ void SigTableSetup(void)
     DetectSNMPPduTypeRegister();
     DetectTemplateBufferRegister();
     DetectBypassRegister();
+    DetectConfigRegister();
 
     DetectTransformCompressWhitespaceRegister();
     DetectTransformStripWhitespaceRegister();

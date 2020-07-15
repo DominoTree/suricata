@@ -117,14 +117,11 @@ typedef struct AppLayerParserProtoCtx_
     int (*StateGetEventInfo)(const char *event_name,
                              int *event_id, AppLayerEventType *event_type);
 
-    LoggerId (*StateGetTxLogged)(void *alstate, void *tx);
-    void (*StateSetTxLogged)(void *alstate, void *tx, LoggerId logger);
-
     DetectEngineState *(*GetTxDetectState)(void *tx);
     int (*SetTxDetectState)(void *tx, DetectEngineState *);
 
-    uint64_t (*GetTxDetectFlags)(void *tx, uint8_t dir);
-    void (*SetTxDetectFlags)(void *tx, uint8_t dir, uint64_t);
+    AppLayerTxData *(*GetTxData)(void *tx);
+    bool (*ApplyTxConfig)(void *state, void *tx, int mode, AppLayerTxConfig);
 
     void (*SetStreamDepthFlag)(void *tx, uint8_t flags);
 
@@ -315,11 +312,9 @@ int AppLayerParserConfParserEnabled(const char *ipproto,
     r = snprintf(param, sizeof(param), "%s%s%s", "app-layer.protocols.",
                  alproto_name, ".enabled");
     if (r < 0) {
-        SCLogError(SC_ERR_FATAL, "snprintf failure.");
-        exit(EXIT_FAILURE);
+        FatalError(SC_ERR_FATAL, "snprintf failure.");
     } else if (r > (int)sizeof(param)) {
-        SCLogError(SC_ERR_FATAL, "buffer not big enough to write param.");
-        exit(EXIT_FAILURE);
+        FatalError(SC_ERR_FATAL, "buffer not big enough to write param.");
     }
 
     node = ConfGetNode(param);
@@ -328,11 +323,9 @@ int AppLayerParserConfParserEnabled(const char *ipproto,
         r = snprintf(param, sizeof(param), "%s%s%s%s%s", "app-layer.protocols.",
                      alproto_name, ".", ipproto, ".enabled");
         if (r < 0) {
-            SCLogError(SC_ERR_FATAL, "snprintf failure.");
-            exit(EXIT_FAILURE);
+            FatalError(SC_ERR_FATAL, "snprintf failure.");
         } else if (r > (int)sizeof(param)) {
-            SCLogError(SC_ERR_FATAL, "buffer not big enough to write param.");
-            exit(EXIT_FAILURE);
+            FatalError(SC_ERR_FATAL, "buffer not big enough to write param.");
         }
 
         node = ConfGetNode(param);
@@ -394,6 +387,12 @@ void AppLayerParserRegisterOptionFlags(uint8_t ipproto, AppProto alproto,
     SCReturn;
 }
 
+uint32_t AppLayerParserGetOptionFlags(uint8_t protomap, AppProto alproto)
+{
+    SCEnter();
+    SCReturnUInt(alp_ctx.ctxs[protomap][alproto].option_flags);
+}
+
 void AppLayerParserRegisterStateFuncs(uint8_t ipproto, AppProto alproto,
                            void *(*StateAlloc)(void),
                            void (*StateFree)(void *))
@@ -440,21 +439,6 @@ void AppLayerParserRegisterGetEventsFunc(uint8_t ipproto, AppProto alproto,
 
     alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].StateGetEvents =
         StateGetEvents;
-
-    SCReturn;
-}
-
-void AppLayerParserRegisterLoggerFuncs(uint8_t ipproto, AppProto alproto,
-                           LoggerId (*StateGetTxLogged)(void *, void *),
-                           void (*StateSetTxLogged)(void *, void *, LoggerId))
-{
-    SCEnter();
-
-    alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].StateGetTxLogged =
-        StateGetTxLogged;
-
-    alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].StateSetTxLogged =
-        StateSetTxLogged;
 
     SCReturn;
 }
@@ -586,14 +570,22 @@ void AppLayerParserRegisterDetectStateFuncs(uint8_t ipproto, AppProto alproto,
     SCReturn;
 }
 
-void AppLayerParserRegisterDetectFlagsFuncs(uint8_t ipproto, AppProto alproto,
-        uint64_t(*GetTxDetectFlags)(void *tx, uint8_t dir),
-        void (*SetTxDetectFlags)(void *tx, uint8_t dir, uint64_t))
+void AppLayerParserRegisterTxDataFunc(uint8_t ipproto, AppProto alproto,
+        AppLayerTxData *(*GetTxData)(void *tx))
 {
     SCEnter();
 
-    alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].GetTxDetectFlags = GetTxDetectFlags;
-    alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].SetTxDetectFlags = SetTxDetectFlags;
+    alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].GetTxData = GetTxData;
+
+    SCReturn;
+}
+
+void AppLayerParserRegisterApplyTxConfigFunc(uint8_t ipproto, AppProto alproto,
+        bool (*ApplyTxConfig)(void *state, void *tx, int mode, AppLayerTxConfig))
+{
+    SCEnter();
+
+    alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].ApplyTxConfig = ApplyTxConfig;
 
     SCReturn;
 }
@@ -683,34 +675,6 @@ AppLayerGetTxIteratorFunc AppLayerGetTxIterator(const uint8_t ipproto,
     return Func ? Func : AppLayerDefaultGetTxIterator;
 }
 
-void AppLayerParserSetTxLogged(uint8_t ipproto, AppProto alproto,
-                               void *alstate, void *tx, LoggerId logger)
-{
-    SCEnter();
-
-    if (alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].
-            StateSetTxLogged != NULL) {
-        alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].
-                StateSetTxLogged(alstate, tx, logger);
-    }
-
-    SCReturn;
-}
-
-LoggerId AppLayerParserGetTxLogged(const Flow *f,
-                              void *alstate, void *tx)
-{
-    SCEnter();
-
-    LoggerId r = 0;
-    if (alp_ctx.ctxs[f->protomap][f->alproto].StateGetTxLogged != NULL) {
-        r = alp_ctx.ctxs[f->protomap][f->alproto].
-            StateGetTxLogged(alstate, tx);
-    }
-
-    SCReturnUInt(r);
-}
-
 uint64_t AppLayerParserGetTransactionLogId(AppLayerParserState *pstate)
 {
     SCEnter();
@@ -736,6 +700,27 @@ uint64_t AppLayerParserGetTransactionInspectId(AppLayerParserState *pstate, uint
         SCReturnCT(0ULL, "uint64_t");
 
     SCReturnCT(pstate->inspect_id[direction & STREAM_TOSERVER ? 0 : 1], "uint64_t");
+}
+
+static inline uint64_t GetTxDetectFlags(AppLayerTxData *txd, const uint8_t dir)
+{
+    uint64_t detect_flags =
+        (dir & STREAM_TOSERVER) ? txd->detect_flags_ts : txd->detect_flags_tc;
+    return detect_flags;
+}
+
+static inline void SetTxDetectFlags(AppLayerTxData *txd, const uint8_t dir, const uint64_t detect_flags)
+{
+    if (dir & STREAM_TOSERVER) {
+        txd->detect_flags_ts = detect_flags;
+    } else {
+        txd->detect_flags_tc = detect_flags;
+    }
+}
+
+static inline uint32_t GetTxLogged(AppLayerTxData *txd)
+{
+    return txd->logged.flags;
 }
 
 void AppLayerParserSetTransactionInspectId(const Flow *f, AppLayerParserState *pstate,
@@ -772,11 +757,12 @@ void AppLayerParserSetTransactionInspectId(const Flow *f, AppLayerParserState *p
         if (state_progress < state_done_progress)
             break;
 
-        if (tag_txs_as_inspected) {
-            uint64_t detect_flags = AppLayerParserGetTxDetectFlags(ipproto, alproto, tx, flags);
+        AppLayerTxData *txd = AppLayerParserGetTxData(ipproto, alproto, tx);
+        if (txd && tag_txs_as_inspected) {
+            uint64_t detect_flags = GetTxDetectFlags(txd, flags);
             if ((detect_flags & APP_LAYER_TX_INSPECTED_FLAG) == 0) {
                 detect_flags |= APP_LAYER_TX_INSPECTED_FLAG;
-                AppLayerParserSetTxDetectFlags(ipproto, alproto, tx, flags, detect_flags);
+                SetTxDetectFlags(txd, flags, detect_flags);
                 SCLogDebug("%p/%"PRIu64" in-order tx is done for direction %s. Flag %016"PRIx64,
                         tx, idx, flags & STREAM_TOSERVER ? "toserver" : "toclient", detect_flags);
             }
@@ -810,15 +796,22 @@ void AppLayerParserSetTransactionInspectId(const Flow *f, AppLayerParserState *p
             if (state_progress < state_done_progress)
                 break;
 
-            uint64_t detect_flags = AppLayerParserGetTxDetectFlags(ipproto, alproto, tx, flags);
-            if ((detect_flags & APP_LAYER_TX_INSPECTED_FLAG) == 0) {
-                detect_flags |= APP_LAYER_TX_INSPECTED_FLAG;
-                AppLayerParserSetTxDetectFlags(ipproto, alproto, tx, flags, detect_flags);
-                SCLogDebug("%p/%"PRIu64" out of order tx is done for direction %s. Flag %016"PRIx64,
-                        tx, idx, flags & STREAM_TOSERVER ? "toserver" : "toclient", detect_flags);
+            /* txd can be NULL for HTTP sessions where the user data alloc failed */
+            AppLayerTxData *txd = AppLayerParserGetTxData(ipproto, alproto, tx);
+            if (likely(txd)) {
+                uint64_t detect_flags = GetTxDetectFlags(txd, flags);
+                if ((detect_flags & APP_LAYER_TX_INSPECTED_FLAG) == 0) {
+                    detect_flags |= APP_LAYER_TX_INSPECTED_FLAG;
+                    SetTxDetectFlags(txd, flags, detect_flags);
+                    SCLogDebug("%p/%"PRIu64" out of order tx is done for direction %s. Flag %016"PRIx64,
+                            tx, idx, flags & STREAM_TOSERVER ? "toserver" : "toclient", detect_flags);
 
-                SCLogDebug("%p/%"PRIu64" out of order tx. Update inspect_id? %"PRIu64,
-                        tx, idx, pstate->inspect_id[direction]);
+                    SCLogDebug("%p/%"PRIu64" out of order tx. Update inspect_id? %"PRIu64,
+                            tx, idx, pstate->inspect_id[direction]);
+                    if (pstate->inspect_id[direction]+1 == idx)
+                        pstate->inspect_id[direction] = idx;
+                }
+            } else {
                 if (pstate->inspect_id[direction]+1 == idx)
                     pstate->inspect_id[direction] = idx;
             }
@@ -888,7 +881,7 @@ void AppLayerParserTransactionsCleanup(Flow *f)
     if (unlikely(p->StateTransactionFree == NULL))
         SCReturn;
 
-    const bool has_tx_detect_flags = (p->GetTxDetectFlags != NULL);
+    const bool has_tx_detect_flags = (p->GetTxData != NULL);
     const uint8_t ipproto = f->proto;
     const AppProto alproto = f->alproto;
     void * const alstate = f->alstate;
@@ -933,9 +926,10 @@ void AppLayerParserTransactionsCleanup(Flow *f)
             skipped = true;
             goto next;
         }
-        if (has_tx_detect_flags) {
+        AppLayerTxData *txd = AppLayerParserGetTxData(ipproto, alproto, tx);
+        if (txd && has_tx_detect_flags) {
             if (f->sgh_toserver != NULL) {
-                uint64_t detect_flags_ts = AppLayerParserGetTxDetectFlags(ipproto, alproto, tx, STREAM_TOSERVER);
+                uint64_t detect_flags_ts = GetTxDetectFlags(txd, STREAM_TOSERVER);
                 if (!(detect_flags_ts & APP_LAYER_TX_INSPECTED_FLAG)) {
                     SCLogDebug("%p/%"PRIu64" skipping: TS inspect not done: ts:%"PRIx64,
                             tx, i, detect_flags_ts);
@@ -944,7 +938,7 @@ void AppLayerParserTransactionsCleanup(Flow *f)
                 }
             }
             if (f->sgh_toclient != NULL) {
-                uint64_t detect_flags_tc = AppLayerParserGetTxDetectFlags(ipproto, alproto, tx, STREAM_TOCLIENT);
+                uint64_t detect_flags_tc = GetTxDetectFlags(txd, STREAM_TOCLIENT);
                 if (!(detect_flags_tc & APP_LAYER_TX_INSPECTED_FLAG)) {
                     SCLogDebug("%p/%"PRIu64" skipping: TC inspect not done: tc:%"PRIx64,
                             tx, i, detect_flags_tc);
@@ -953,8 +947,8 @@ void AppLayerParserTransactionsCleanup(Flow *f)
                 }
             }
         }
-        if (logger_expectation != 0) {
-            LoggerId tx_logged = AppLayerParserGetTxLogged(f, alstate, tx);
+        if (txd &&logger_expectation != 0) {
+            LoggerId tx_logged = GetTxLogged(txd);
             if (tx_logged != logger_expectation) {
                 SCLogDebug("%p/%"PRIu64" skipping: logging not done: want:%"PRIx32", have:%"PRIx32,
                         tx, i, logger_expectation, tx_logged);
@@ -1137,28 +1131,29 @@ bool AppLayerParserSupportsTxDetectFlags(AppProto alproto)
 {
     SCEnter();
     for (uint8_t p = 0; p < FLOW_PROTO_APPLAYER_MAX; p++) {
-        if (alp_ctx.ctxs[p][alproto].GetTxDetectFlags != NULL) {
+        if (alp_ctx.ctxs[p][alproto].GetTxData != NULL) {
             SCReturnBool(true);
         }
     }
     SCReturnBool(false);
 }
 
-uint64_t AppLayerParserGetTxDetectFlags(uint8_t ipproto, AppProto alproto, void *tx, uint8_t dir)
+AppLayerTxData *AppLayerParserGetTxData(uint8_t ipproto, AppProto alproto, void *tx)
 {
     SCEnter();
-    uint64_t flags = 0;
-    if (alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].GetTxDetectFlags != NULL) {
-        flags = alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].GetTxDetectFlags(tx, dir);
+    if (alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].GetTxData) {
+        AppLayerTxData *d = alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].GetTxData(tx);
+        SCReturnPtr(d, "AppLayerTxData");
     }
-    SCReturnUInt(flags);
+    SCReturnPtr(NULL, "AppLayerTxData");
 }
 
-void AppLayerParserSetTxDetectFlags(uint8_t ipproto, AppProto alproto, void *tx, uint8_t dir, uint64_t flags)
+void AppLayerParserApplyTxConfig(uint8_t ipproto, AppProto alproto,
+        void *state, void *tx, enum ConfigAction mode, AppLayerTxConfig config)
 {
     SCEnter();
-    if (alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].SetTxDetectFlags != NULL) {
-        alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].SetTxDetectFlags(tx, dir, flags);
+    if (alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].ApplyTxConfig) {
+        alp_ctx.ctxs[FlowGetProtoMapping(ipproto)][alproto].ApplyTxConfig(state, tx, mode, config);
     }
     SCReturn;
 }
@@ -1175,7 +1170,7 @@ int AppLayerParserParse(ThreadVars *tv, AppLayerParserThreadCtx *alp_tctx, Flow 
 #ifdef DEBUG_VALIDATION
     BUG_ON(f->protomap != FlowGetProtoMapping(f->proto));
 #endif
-    AppLayerParserState *pstate = NULL;
+    AppLayerParserState *pstate = f->alparser;
     AppLayerParserProtoCtx *p = &alp_ctx.ctxs[f->protomap][alproto];
     void *alstate = NULL;
     uint64_t p_tx_cnt = 0;
@@ -1198,7 +1193,6 @@ int AppLayerParserParse(ThreadVars *tv, AppLayerParserThreadCtx *alp_tctx, Flow 
     }
 
     /* Get the parser state (if any) */
-    pstate = f->alparser;
     if (pstate == NULL) {
         f->alparser = pstate = AppLayerParserStateAlloc();
         if (pstate == NULL)
@@ -1469,11 +1463,11 @@ static void ValidateParserProtoDump(AppProto alproto, uint8_t ipproto)
     printf("- StateAlloc %p StateFree %p\n", ctx->StateAlloc, ctx->StateFree);
     printf("- StateGetTx %p StateGetTxCnt %p StateTransactionFree %p\n",
             ctx->StateGetTx, ctx->StateGetTxCnt, ctx->StateTransactionFree);
+    printf("- GetTxData %p\n", ctx->GetTxData);
     printf("- StateGetProgress %p StateGetProgressCompletionStatus %p\n", ctx->StateGetProgress, ctx_def->StateGetProgressCompletionStatus);
     printf("- GetTxDetectState %p SetTxDetectState %p\n", ctx->GetTxDetectState, ctx->SetTxDetectState);
     printf("Optional:\n");
     printf("- LocalStorageAlloc %p LocalStorageFree %p\n", ctx->LocalStorageAlloc, ctx->LocalStorageFree);
-    printf("- StateGetTxLogged %p StateSetTxLogged %p\n", ctx->StateGetTxLogged, ctx->StateSetTxLogged);
     printf("- StateGetEvents %p StateGetEventInfo %p StateGetEventInfoById %p\n", ctx->StateGetEvents, ctx->StateGetEventInfo,
             ctx->StateGetEventInfoById);
 }
@@ -1509,19 +1503,15 @@ static void ValidateParserProto(AppProto alproto, uint8_t ipproto)
     if (!(BOTH_SET_OR_BOTH_UNSET(ctx->LocalStorageAlloc, ctx->LocalStorageFree))) {
         goto bad;
     }
-    if (!(BOTH_SET_OR_BOTH_UNSET(ctx->StateGetTxLogged, ctx->StateSetTxLogged))) {
-        goto bad;
-    }
     if (!(BOTH_SET(ctx->GetTxDetectState, ctx->SetTxDetectState))) {
         goto bad;
     }
     if (!(BOTH_SET_OR_BOTH_UNSET(ctx->GetTxDetectState, ctx->SetTxDetectState))) {
         goto bad;
     }
-    if (!(BOTH_SET_OR_BOTH_UNSET(ctx->GetTxDetectFlags, ctx->SetTxDetectFlags))) {
+    if (ctx->GetTxData == NULL) {
         goto bad;
     }
-
     return;
 bad:
     ValidateParserProtoDump(alproto, ipproto);
