@@ -338,6 +338,7 @@ pub struct NFSState {
     /// true as long as we have file txs that are in a post-gap
     /// state. It means we'll do extra house keeping for those.
     check_post_gap_file_txs: bool,
+    post_gap_files_checked: bool,
 
     pub nfs_version: u16,
 
@@ -370,12 +371,21 @@ impl NFSState {
             tc_gap:false,
             is_udp:false,
             check_post_gap_file_txs:false,
+            post_gap_files_checked:false,
             nfs_version:0,
             events:0,
             tx_id:0,
             ts: 0,
         }
     }
+
+    fn update_ts(&mut self, ts: u64) {
+        if ts != self.ts {
+            self.ts = ts;
+            self.post_gap_files_checked = false;
+        }
+    }
+
     pub fn free(&mut self) {
         self.files.free();
     }
@@ -492,11 +502,13 @@ impl NFSState {
     {
         let mut post_gap_txs = false;
         for tx in &mut self.transactions {
-            if let Some(NFSTransactionTypeData::FILE(ref f)) = tx.type_data {
+            if let Some(NFSTransactionTypeData::FILE(ref mut f)) = tx.type_data {
                 if f.post_gap_ts > 0 {
                     if self.ts > f.post_gap_ts {
                         tx.request_done = true;
                         tx.response_done = true;
+                        let (files, flags) = self.files.get(tx.file_tx_direction);
+                        f.file_tracker.trunc(files, flags);
                     } else {
                         post_gap_txs = true;
                     }
@@ -1172,8 +1184,9 @@ impl NFSState {
         };
 
         self.post_gap_housekeeping(STREAM_TOSERVER);
-        if self.check_post_gap_file_txs {
+        if self.check_post_gap_file_txs && !self.post_gap_files_checked {
             self.post_gap_housekeeping_for_files();
+            self.post_gap_files_checked = true;
         }
 
         AppLayerResult::ok()
@@ -1322,8 +1335,9 @@ impl NFSState {
             }
         };
         self.post_gap_housekeeping(STREAM_TOCLIENT);
-        if self.check_post_gap_file_txs {
+        if self.check_post_gap_file_txs && !self.post_gap_files_checked {
             self.post_gap_housekeeping_for_files();
+            self.post_gap_files_checked = true;
         }
         AppLayerResult::ok()
     }
@@ -1425,7 +1439,7 @@ pub extern "C" fn rs_nfs_parse_request(flow: &mut Flow,
     let buf = unsafe{std::slice::from_raw_parts(input, input_len as usize)};
     SCLogDebug!("parsing {} bytes of request data", input_len);
 
-    state.ts = flow.get_last_time().as_secs();
+    state.update_ts(flow.get_last_time().as_secs());
     state.parse_tcp_data_ts(buf)
 }
 
@@ -1450,7 +1464,7 @@ pub extern "C" fn rs_nfs_parse_response(flow: &mut Flow,
     SCLogDebug!("parsing {} bytes of response data", input_len);
     let buf = unsafe{std::slice::from_raw_parts(input, input_len as usize)};
 
-    state.ts = flow.get_last_time().as_secs();
+    state.update_ts(flow.get_last_time().as_secs());
     state.parse_tcp_data_tc(buf)
 }
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2019-2020 Open Information Security Foundation
+/* Copyright (C) 2017 Open Information Security Foundation
  *
  * You can copy, redistribute or modify this Program under the terms of
  * the GNU General Public License version 2 as published by the Free
@@ -15,15 +15,9 @@
  * 02110-1301, USA.
  */
 
-/**
- * \file
- *
- * \author Giuseppe Longo <giuseppe@glongo.it>
- */
+#ifndef __OUTPUT_JSON_DCERPC_H__
+#define __OUTPUT_JSON_DCERPC_H__
 
-#ifndef __APP_LAYER_SIP_H__
-#define __APP_LAYER_SIP_H__
+void JsonDCERPCLogRegister(void);
 
-void RegisterSIPParsers(void);
-
-#endif /* __APP_LAYER_SIP_H__ */
+#endif /* __OUTPUT_JSON_DCERPC_H__ */

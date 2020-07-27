@@ -74,6 +74,7 @@ documentation_style = "doxy"
 include = [
     "AppProto",
     "AppLayerGetTxIterTuple",
+    "RdpState",
     "SIPState",
     "CMark",
 ]
